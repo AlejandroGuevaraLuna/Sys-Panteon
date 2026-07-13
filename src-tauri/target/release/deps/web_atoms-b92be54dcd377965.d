@@ -1,0 +1,11 @@
+/Users/andro/.minimax/sessions/mvs_ed2175bded054fbf8d5bbd2b2090275a/workspace/panteon-admin/src-tauri/target/release/deps/web_atoms-b92be54dcd377965.d: /Users/andro/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/web_atoms-0.2.5/lib.rs /Users/andro/.minimax/sessions/mvs_ed2175bded054fbf8d5bbd2b2090275a/workspace/panteon-admin/src-tauri/target/release/build/web_atoms-42faf1aec8aa01f2/out/named_entities.rs /Users/andro/.minimax/sessions/mvs_ed2175bded054fbf8d5bbd2b2090275a/workspace/panteon-admin/src-tauri/target/release/build/web_atoms-42faf1aec8aa01f2/out/generated.rs
+
+/Users/andro/.minimax/sessions/mvs_ed2175bded054fbf8d5bbd2b2090275a/workspace/panteon-admin/src-tauri/target/release/deps/libweb_atoms-b92be54dcd377965.rlib: /Users/andro/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/web_atoms-0.2.5/lib.rs /Users/andro/.minimax/sessions/mvs_ed2175bded054fbf8d5bbd2b2090275a/workspace/panteon-admin/src-tauri/target/release/build/web_atoms-42faf1aec8aa01f2/out/named_entities.rs /Users/andro/.minimax/sessions/mvs_ed2175bded054fbf8d5bbd2b2090275a/workspace/panteon-admin/src-tauri/target/release/build/web_atoms-42faf1aec8aa01f2/out/generated.rs
+
+/Users/andro/.minimax/sessions/mvs_ed2175bded054fbf8d5bbd2b2090275a/workspace/panteon-admin/src-tauri/target/release/deps/libweb_atoms-b92be54dcd377965.rmeta: /Users/andro/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/web_atoms-0.2.5/lib.rs /Users/andro/.minimax/sessions/mvs_ed2175bded054fbf8d5bbd2b2090275a/workspace/panteon-admin/src-tauri/target/release/build/web_atoms-42faf1aec8aa01f2/out/named_entities.rs /Users/andro/.minimax/sessions/mvs_ed2175bded054fbf8d5bbd2b2090275a/workspace/panteon-admin/src-tauri/target/release/build/web_atoms-42faf1aec8aa01f2/out/generated.rs
+
+/Users/andro/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/web_atoms-0.2.5/lib.rs:
+/Users/andro/.minimax/sessions/mvs_ed2175bded054fbf8d5bbd2b2090275a/workspace/panteon-admin/src-tauri/target/release/build/web_atoms-42faf1aec8aa01f2/out/named_entities.rs:
+/Users/andro/.minimax/sessions/mvs_ed2175bded054fbf8d5bbd2b2090275a/workspace/panteon-admin/src-tauri/target/release/build/web_atoms-42faf1aec8aa01f2/out/generated.rs:
+
+# env-dep:OUT_DIR=/Users/andro/.minimax/sessions/mvs_ed2175bded054fbf8d5bbd2b2090275a/workspace/panteon-admin/src-tauri/target/release/build/web_atoms-42faf1aec8aa01f2/out
