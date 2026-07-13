@@ -99,12 +99,61 @@ export const memorandumsService = {
     );
   },
 
-  async obtener(id: number): Promise<Memorandum | null> {
+  async obtener(id: number): Promise<MemorandumDetalle | null> {
     const db = await getDb();
     const rows = await db.select<Memorandum[]>(
       `SELECT * FROM memorandums WHERE id = ${n(id)} LIMIT 1`,
     );
-    return rows[0] ?? null;
+    const memo = rows[0] ?? null;
+    if (!memo) return null;
+
+    // Para servicios de TRASPASO, cargamos el cambio de titular
+    // asociado (preferentemente el vinculado por memorandum_id; si no
+    // hay, el más reciente de la fosa/gaveta). Esto le permite al PDF
+    // invertir el orden del texto (titular anterior en el párrafo 1,
+    // solicitante en el párrafo 2).
+    let servicioTipo: string | null = null;
+    if (memo.servicio_id) {
+      const sv = await db.select<{ tipo: string }[]>(
+        `SELECT tipo FROM servicios WHERE id = ${n(memo.servicio_id)} LIMIT 1`,
+      );
+      servicioTipo = sv[0]?.tipo ?? null;
+    }
+    let cambioTitular: MemorandumDetalle["cambio_titular"] = null;
+    if (servicioTipo === "TRASPASO" && (memo.fosa_id || memo.gaveta_id)) {
+      const fkCol = memo.fosa_id ? "fosa_id" : "gaveta_id";
+      const fkVal = memo.fosa_id || memo.gaveta_id;
+      const ct = await db.select<{
+        titular_anterior_nombre: string; titular_nuevo_nombre: string;
+        fecha_cambio: string; motivo: string | null;
+      }[]>(
+        `SELECT titular_anterior_nombre, titular_nuevo_nombre,
+                fecha_cambio, motivo
+         FROM cambios_titular
+         WHERE ${fkCol} = ${n(fkVal)}
+         ORDER BY
+           CASE WHEN memorandum_id = ${n(memo.id)} THEN 0 ELSE 1 END,
+           fecha_cambio DESC, id DESC
+         LIMIT 1`,
+      );
+      if (ct[0]) cambioTitular = ct[0];
+    }
+    // Devolvemos un MemorandumDetalle parcial: los campos del JOIN
+    // extendido (fosa_seccion_codigo, etc.) quedan vacíos, y el PDF los
+    // sobreescribe desde el contexto (ctx en la descarga). Lo que sí
+    // importa aquí es `cambio_titular` y `servicio_tipo`.
+    return {
+      ...memo,
+      servicio_tipo: servicioTipo as never,
+      cambio_titular: cambioTitular,
+      fosa_seccion_codigo: "", fosa_seccion_nombre: "",
+      fosa_linea_codigo: "", fosa_linea_nombre: "",
+      fosa_numero: "", fosa_panteon_nombre: "",
+      gaveta_numero: 0, gaveta_nivel: "",
+      gaveta_libro: "", gaveta_registro: "",
+      servicio_nombre: "",
+      titular_nombre: "",
+    };
   },
 
   async siguienteFolio(): Promise<string> {

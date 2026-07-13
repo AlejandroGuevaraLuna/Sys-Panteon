@@ -58,6 +58,19 @@ export function generarMemorandumPDF({
     superficie = `largo ${alto} m`;
   }
   const titular = String(ent?.titular_nombre ?? "").trim() || "—";
+  // En el primer párrafo se muestra el nombre del SOLICITANTE (no el titular).
+  // El titular se conserva en el segundo párrafo ("propiedad de C: ...").
+  const solicitante = String(memorandum.solicitante_nombre ?? "").trim() || "—";
+
+  // Excepción: el servicio de TRASPASO invierte el orden. En ese caso
+  // el párrafo 1 muestra al TITULAR ANTERIOR (quien traspasa) y el
+  // párrafo 2 muestra al SOLICITANTE (el nuevo titular / adquiriente).
+  const esTraspaso = memorandum.servicio_tipo === "TRASPASO";
+  const titularAnterior = String(
+    memorandum.cambio_titular?.titular_anterior_nombre ?? titular,
+  ).trim() || titular || "—";
+  const nombreParrafo1 = esTraspaso ? titularAnterior : solicitante;
+  const nombreParrafo2 = esTraspaso ? solicitante : titular;
 
   const montoStr = formatCurrency(memorandum.monto);
   const fechaStr = formatDateLong(memorandum.fecha_emision);
@@ -102,19 +115,23 @@ export function generarMemorandumPDF({
   const fw = (text: string, minW = 14): number =>
     Math.max(minW, doc.getTextWidth(text) + 3);
 
-  // ============== Párrafo 1 (justificado, con titular y monto) ==============
-  // "Por este conducto le hago su conocimiento que el / la C. {titular}
-  //  realizará el pago por la cantidad total de $ {monto}"
-  const titW = Math.min(70, fw(titular, 28));
+  // ============== Párrafo 1 (justificado, con nombreParrafo1 y monto) ==============
+  // Caso normal: "el / la C. {SOLICITANTE} realizará el pago..."
+  // Caso TRASPASO: "el / la C. {TITULAR ANTERIOR} realizará el traspaso..."
+  // Para TRASPASO el texto del verbo también cambia.
+  const solW = Math.min(70, fw(nombreParrafo1, 28));
   const monW = fw(montoStr, 28);
+  const textoVerbo = esTraspaso
+    ? "realizará el traspaso por la cantidad total de"
+    : "realizará el pago por la cantidad total de";
   let y = drawJustifiedParagraph(
     doc,
     8,
     [
       { type: "text", value: "Por este conducto le hago su conocimiento que el / la C." },
-      { type: "fill", value: titular, width: titW },
+      { type: "fill", value: nombreParrafo1, width: solW },
       // montoStr ya trae "$" desde formatCurrency; el text NO debe repetirlo.
-      { type: "text", value: "realizará el pago por la cantidad total de" },
+      { type: "text", value: textoVerbo },
       { type: "fill", value: montoStr, width: monW },
       { type: "text", value: "." },
     ],
@@ -155,13 +172,14 @@ export function generarMemorandumPDF({
   doc.text(montoStr, srvX + srvW + gapSrvMon, srvY);
   y = srvY + 10;  // MISMO espacio arriba y abajo del servicio (10mm cada uno)
 
-  // ============== Párrafo 2 (justificado, ubicación + superficie + titular) ==============
-  // "De la {fosa/gaveta} #N ubicado en la sección {S} linea {L} {F/G} #N
-  //  del Panteón {Nombre} con una superficie amparada de {ancho × largo}
-  //  propiedad de C: {titular}. Lo anterior para los tramites correspondientes."
+  // ============== Párrafo 2 (justificado, ubicación + superficie + nombreParrafo2) ==============
+  // Caso normal: "...propiedad de C: {titular}. Lo anterior..."
+  // Caso TRASPASO: "...a favor de C: {solicitante}. Lo anterior..."
   const entLabelW = fw(entLabel, 14);
   const entNum = (fosaNumero || gavetaNumero || "—");
   const entEntNum = fosaNumero ? fosaNumero : (gavetaNumero || "—");
+  const textoPropiedad = esTraspaso ? "a favor de" : "propiedad de";
+  const nombreP2 = `C: ${nombreParrafo2}`;
   y = drawJustifiedParagraph(
     doc,
     7,
@@ -178,8 +196,8 @@ export function generarMemorandumPDF({
       { type: "fill", value: panteonNombre, width: fw(panteonNombre, 30) },
       { type: "text", value: "con una superficie amparada de" },
       { type: "fill", value: superficie, width: fw(superficie, 30) },
-      { type: "text", value: "propiedad de" },
-      { type: "fill", value: `C: ${titular}`, width: fw(`C: ${titular}`, 30) },
+      { type: "text", value: textoPropiedad },
+      { type: "fill", value: nombreP2, width: fw(nombreP2, 30) },
       { type: "text", value: ". Lo anterior para los tramites correspondientes." },
     ],
     margin,

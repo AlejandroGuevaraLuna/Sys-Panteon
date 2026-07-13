@@ -1,8 +1,8 @@
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Input, Textarea } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Input, Textarea } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 export interface CamposEntidadForm {
   // Datos principales (pestaña 1)
@@ -27,24 +27,24 @@ export interface CamposEntidadForm {
 }
 
 export const CAMPOS_VACIOS: CamposEntidadForm = {
-  numero: "",
-  libro: "",
-  registro: "",
-  capacidad_gavetas: "1",
-  titular_nombre: "",
-  titular_domicilio: "",
-  titular_telefono: "",
-  numero_titulo: "",
-  fecha_titulo: "",
-  superficie_ancho: "1",
-  superficie_alto: "2.5",
-  beneficiario: "",
-  observaciones: "",
-  notas_libro: "",
+  numero: '',
+  libro: '',
+  registro: '',
+  capacidad_gavetas: '1',
+  titular_nombre: '',
+  titular_domicilio: '',
+  titular_telefono: '',
+  numero_titulo: '',
+  fecha_titulo: '',
+  superficie_ancho: '1',
+  superficie_alto: '2.5',
+  beneficiario: '',
+  observaciones: '',
+  notas_libro: '',
 };
 
 interface Props {
-  tipo: "fosa" | "gaveta";
+  tipo: 'fosa' | 'gaveta';
   form: CamposEntidadForm;
   onChange: (form: CamposEntidadForm) => void;
   onSubmit: () => void;
@@ -68,9 +68,17 @@ interface Props {
  * El resto puede llenarse después desde la ficha.
  */
 export function EntidadFormTabs({
-  tipo, form, onChange, onSubmit, guardando, submitLabel, submitDisabled, onCancel,
+  tipo,
+  form,
+  onChange,
+  onSubmit,
+  guardando,
+  submitLabel,
+  submitDisabled,
+  onCancel,
 }: Props) {
-  const upd = (patch: Partial<CamposEntidadForm>) => onChange({ ...form, ...patch });
+  const upd = (patch: Partial<CamposEntidadForm>) =>
+    onChange({ ...form, ...patch });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,61 +86,88 @@ export function EntidadFormTabs({
     onSubmit();
   };
 
-  const acento = tipo === "fosa" ? "primary" : "primary";
+  const acento = tipo === 'fosa' ? 'primary' : 'primary';
 
   // Estilos locales para agrandar inputs/labels del formulario de creación
-  const inputCls = "h-11 text-base";
-  const labelCls = "text-sm font-medium";
-  const helperCls = "text-sm text-muted-foreground mt-1";
+  const inputCls = 'h-11 text-base';
+  const labelCls = 'text-sm font-medium';
+  const helperCls = 'text-sm text-muted-foreground mt-1';
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 text-base">
-      <Tabs defaultValue="datos" className="w-full">
-        <TabsList className="grid w-full grid-cols-3 h-11">
-          <TabsTrigger value="datos" className="text-base">1. Datos</TabsTrigger>
-          <TabsTrigger value="titular" className="text-base">2. Titular</TabsTrigger>
-          <TabsTrigger value="notas" className="text-base">3. Notas</TabsTrigger>
+    <form
+      onSubmit={handleSubmit}
+      className='space-y-4 text-base'
+    >
+      <Tabs
+        defaultValue='datos'
+        className='w-full'
+      >
+        <TabsList className='grid w-full grid-cols-3 h-11'>
+          <TabsTrigger
+            value='datos'
+            className='text-base'
+          >
+            1. Datos
+          </TabsTrigger>
+          <TabsTrigger
+            value='titular'
+            className='text-base'
+          >
+            2. Titular
+          </TabsTrigger>
+          <TabsTrigger
+            value='notas'
+            className='text-base'
+          >
+            3. Notas
+          </TabsTrigger>
         </TabsList>
 
         {/* Pestaña 1: Datos principales */}
-        <TabsContent value="datos" className="space-y-4 mt-3">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <TabsContent
+          value='datos'
+          className='space-y-4 mt-3'
+        >
+          <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
             <div>
               <Label>Número *</Label>
               <Input
                 className={inputCls}
                 value={form.numero}
                 onChange={(e) => upd({ numero: e.target.value })}
-                placeholder={tipo === "fosa" ? "Ej: 1, A, 10" : "Ej: 1, 2, 50"}
+                placeholder={tipo === 'fosa' ? 'Ej: 1, A, 10' : 'Ej: 1, 2, 50'}
                 autoFocus
               />
-              <p className="text-xs text-muted-foreground mt-1">
+              <p className='text-xs text-muted-foreground mt-1'>
                 El número es obligatorio.
               </p>
             </div>
-            {tipo === "fosa" && (
+            {tipo === 'fosa' && (
               <div>
                 <Label>Capacidad (referencial)</Label>
                 <Input
-                className={inputCls}
-                  type="number" min="1" max="50"
+                  className={inputCls}
+                  type='number'
+                  min='1'
+                  max='50'
                   value={form.capacidad_gavetas}
                   onChange={(e) => upd({ capacidad_gavetas: e.target.value })}
                 />
-                <p className="text-xs text-muted-foreground mt-1">
-                  En v5 las gavetas son independientes — este valor es sólo informativo.
+                <p className='text-xs text-muted-foreground mt-1'>
+                  En v5 las gavetas son independientes — este valor es sólo
+                  informativo.
                 </p>
               </div>
             )}
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
             <div>
               <Label>Libro</Label>
               <Input
                 className={inputCls}
                 value={form.libro}
                 onChange={(e) => upd({ libro: e.target.value })}
-                placeholder="Ej: L-2024-001"
+                placeholder='Ej: L-2024-001'
               />
             </div>
             <div>
@@ -141,22 +176,25 @@ export function EntidadFormTabs({
                 className={inputCls}
                 value={form.registro}
                 onChange={(e) => upd({ registro: e.target.value })}
-                placeholder="Número"
+                placeholder='Número'
               />
             </div>
           </div>
         </TabsContent>
 
         {/* Pestaña 2: Titular */}
-        <TabsContent value="titular" className="space-y-3 mt-2">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <TabsContent
+          value='titular'
+          className='space-y-3 mt-2'
+        >
+          <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
             <div>
               <Label>Nombre del titular</Label>
               <Input
                 className={inputCls}
                 value={form.titular_nombre}
                 onChange={(e) => upd({ titular_nombre: e.target.value })}
-                placeholder="Nombre completo"
+                placeholder='Nombre completo'
               />
             </div>
             <div>
@@ -165,105 +203,120 @@ export function EntidadFormTabs({
                 className={inputCls}
                 value={form.titular_telefono}
                 onChange={(e) => upd({ titular_telefono: e.target.value })}
-                placeholder="(33) 1234-5678"
+                placeholder='(33) 1234-5678'
               />
             </div>
           </div>
           <div>
             <Label>Domicilio</Label>
             <Input
-                className={inputCls}
+              className={inputCls}
               value={form.titular_domicilio}
               onChange={(e) => upd({ titular_domicilio: e.target.value })}
-              placeholder="Calle, número, colonia, ciudad"
+              placeholder='Calle, número, colonia, ciudad'
             />
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
             <div>
               <Label>Número de título</Label>
               <Input
                 className={inputCls}
                 value={form.numero_titulo}
                 onChange={(e) => upd({ numero_titulo: e.target.value })}
-                placeholder="T-12345"
+                placeholder='T-12345'
               />
             </div>
             <div>
               <Label>Fecha del título</Label>
               <Input
                 className={inputCls}
-                type="date"
+                type='date'
                 value={form.fecha_titulo}
                 onChange={(e) => upd({ fecha_titulo: e.target.value })}
               />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className='grid grid-cols-2 gap-4'>
             <div>
               <Label>Ancho (m)</Label>
               <Input
                 className={inputCls}
-                type="number" step="0.01" min="0"
+                type='number'
+                step='0.01'
+                min='0'
                 value={form.superficie_ancho}
                 onChange={(e) => upd({ superficie_ancho: e.target.value })}
-                placeholder="Ej: 1"
+                placeholder='Ej: 1'
               />
             </div>
             <div>
-              <Label>Alto (m)</Label>
+              <Label>Largo (m)</Label>
               <Input
                 className={inputCls}
-                type="number" step="0.01" min="0"
+                type='number'
+                step='0.01'
+                min='0'
                 value={form.superficie_alto}
                 onChange={(e) => upd({ superficie_alto: e.target.value })}
-                placeholder="Ej: 2.5"
+                placeholder='Ej: 2.5'
               />
             </div>
           </div>
           <div>
             <Label>Beneficiario</Label>
             <Input
-                className={inputCls}
+              className={inputCls}
               value={form.beneficiario}
               onChange={(e) => upd({ beneficiario: e.target.value })}
-              placeholder="Nombre del beneficiario"
+              placeholder='Nombre del beneficiario'
             />
           </div>
         </TabsContent>
 
         {/* Pestaña 3: Notas */}
-        <TabsContent value="notas" className="space-y-3 mt-2">
+        <TabsContent
+          value='notas'
+          className='space-y-3 mt-2'
+        >
           <div>
             <Label>Observaciones</Label>
             <Textarea
-                className="text-base"
+              className='text-base'
               rows={3}
               value={form.observaciones}
               onChange={(e) => upd({ observaciones: e.target.value })}
-              placeholder="Notas generales sobre el estado, mantenimiento, etc."
+              placeholder='Notas generales sobre el estado, mantenimiento, etc.'
             />
           </div>
           <div>
             <Label>Notas del libro</Label>
             <Textarea
-                className="text-base"
+              className='text-base'
               rows={3}
               value={form.notas_libro}
               onChange={(e) => upd({ notas_libro: e.target.value })}
-              placeholder="Anotaciones adicionales del libro de registros"
+              placeholder='Anotaciones adicionales del libro de registros'
             />
           </div>
         </TabsContent>
       </Tabs>
 
-      <div className="flex justify-end gap-2 pt-2 border-t">
+      <div className='flex justify-end gap-2 pt-2 border-t'>
         {onCancel && (
-          <Button type="button" variant="outline" onClick={onCancel} disabled={guardando}>
+          <Button
+            type='button'
+            variant='outline'
+            onClick={onCancel}
+            disabled={guardando}
+          >
             Cancelar
           </Button>
         )}
-        <Button type="submit" disabled={guardando || submitDisabled || !form.numero.trim()}>
-          {guardando ? "Guardando..." : submitLabel}
+        <Button
+          type='submit'
+          disabled={guardando || submitDisabled || !form.numero.trim()}
+        >
+          {guardando ? 'Guardando...' : submitLabel}
         </Button>
       </div>
     </form>

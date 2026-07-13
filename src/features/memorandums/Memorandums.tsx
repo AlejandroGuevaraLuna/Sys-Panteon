@@ -234,21 +234,26 @@ export default function Memorandums() {
       const detalle = await memorandumsService.obtener(m.id);
       if (!detalle) { alert("No se pudo cargar el memorandum"); return; }
       // Cargamos la fosa/gaveta real para tener los datos de superficie
-      // (ancho/alto). Sin esto, el PDF de la lista siempre mostraría
-      // "—" en la superficie amparada.
+      // (ancho/alto) y el TITULAR real (no el solicitante). Sin esto, el
+      // PDF de la lista siempre mostraría "—" en la superficie amparada
+      // y el titular en el segundo párrafo sería incorrecto.
       let ent: Record<string, unknown> | null = null;
       if (m.fosa_id) {
         ent = (await fosasService.obtenerDetalle(m.fosa_id)) as unknown as Record<string, unknown> | null;
       } else if (m.gaveta_id) {
         ent = (await gavetasService.obtenerDetalle(m.gaveta_id)) as unknown as Record<string, unknown> | null;
       }
+      // El TITULAR es el dueño de la fosa/gaveta (de la entidad real).
+      // El SOLICITANTE es quien está haciendo el trámite y se muestra
+      // en el primer párrafo. No deben mezclarse.
+      const titularReal = String(ent?.titular_nombre ?? "").trim();
       const ctx = {
         ...(m.fosa_numero ? { numero: m.fosa_numero } : {}),
         ...(m.gaveta_numero ? { numero: m.gaveta_numero } : {}),
         seccion_codigo: m.seccion_codigo,
         linea_codigo: m.linea_codigo,
         panteon_nombre: m.panteon_nombre,
-        titular_nombre: detalle.solicitante_nombre,
+        titular_nombre: titularReal,
         libro: "", registro: "", titular_domicilio: "", titular_telefono: "",
         numero_titulo: "", fecha_titulo: null,
         // Superficie: viene de la fosa/gaveta real, o "" si no hay
@@ -261,12 +266,13 @@ export default function Memorandums() {
         memorandum: {
           ...detalle,
           fosa_panteon_nombre: m.panteon_nombre ?? "—",
-          // El detalle de `obtener()` es `SELECT *` y NO incluye
-          // servicio_nombre ni servicio_tipo (vienen por JOIN solo en el
-          // listado). Si no los inyectamos desde `m`, el PDF muestra
-          // "Servicio" genérico.
+          // El detalle de `obtener()` ya incluye `servicio_tipo` (lo
+          // inyectamos desde la tabla `servicios` por si el memo quedó
+          // sin el JOIN del listado). También incluye `cambio_titular`
+          // cuando es TRASPASO, que es lo que el PDF necesita para
+          // invertir el orden del texto.
           servicio_nombre: m.servicio_nombre ?? "Servicio",
-          servicio_tipo: (m.servicio_tipo ?? "OTRO") as never,
+          servicio_tipo: (detalle.servicio_tipo ?? m.servicio_tipo ?? "OTRO") as never,
         } as never,
         fosa: m.fosa_id ? (ctx as never) : null,
         gaveta: m.gaveta_id ? (ctx as never) : null,

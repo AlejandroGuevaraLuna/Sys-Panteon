@@ -149,4 +149,13 @@ export interface MemorandumDetalle extends Memorandum {
   gaveta_libro: string; gaveta_registro: string;
   servicio_nombre: string; servicio_tipo: TipoServicio;
   titular_nombre: string;
+  /** Para servicios de TRASPASO, contiene el cambio de titular más
+   *  reciente asociado a esta fosa/gaveta (el vinculado por
+   *  memorandum_id, o el más reciente si no hay vínculo). */
+  cambio_titular?: {
+    titular_anterior_nombre: string;
+    titular_nuevo_nombre: string;
+    fecha_cambio: string;
+    motivo: string | null;
+  } | null;
 }
