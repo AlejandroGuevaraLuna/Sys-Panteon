@@ -1,0 +1,147 @@
+# ===========================================
+# Node / pnpm / Vite
+# ===========================================
+node_modules/
+.pnpm-store/
+.pnp/
+.pnp.js
+.yarn/
+
+# Build outputs
+dist/
+dist-ssr/
+build/
+*.tsbuildinfo
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+.npm/
+.yarn-integrity
+
+# Variables de entorno (credenciales, claves)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Cache y cobertura
+.npm/
+.eslintcache
+.cache/
+.parcel-cache/
+.vite/
+coverage/
+.nyc_output/
+
+# ===========================================
+# Tauri / Rust
+# ===========================================
+# Target de compilación (muy pesado, ~varios GB)
+src-tauri/target/
+
+# Lock files que NO deben commitearse en apps Rust
+# (Sí se commitean en libraries; NO en binarios/apps)
+# Si quieres reproducible builds, déjalo FUERA del .gitignore.
+# src-tauri/Cargo.lock
+
+# Generados por Tauri
+src-tauri/gen/schemas/
+src-tauri/target/
+
+# Herramientas de build de Windows
+src-tauri/WixTools/
+
+# ===========================================
+# Iconos de Tauri (regenerables con `npx tauri icon src/img/Logo-Pabe.png`)
+# Mantén SOLO el logo fuente en src/img/. Los iconos nativos se regeneran
+# al hacer build o manualmente.
+# ===========================================
+# src-tauri/icons/32x32.png
+# src-tauri/icons/64x64.png
+# src-tauri/icons/128x128.png
+# src-tauri/icons/128x128@2x.png
+# src-tauri/icons/Square*.png
+# src-tauri/icons/StoreLogo.png
+# src-tauri/icons/icon.icns
+# src-tauri/icons/icon.ico
+# src-tauri/icons/android/
+
+# NOTA: Si prefieres commitear los iconos nativos (recomendado para que
+# el build funcione en máquinas sin `tauri icon` instalado), comenta las
+# líneas de arriba y commitea `src-tauri/icons/`.
+
+# ===========================================
+# Editores / IDEs
+# ===========================================
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+
+.idea/
+*.iml
+*.iws
+*.ipr
+.project
+.classpath
+.settings/
+nbproject/
+nbbuild/
+nbdist/
+.nb-gradle/
+
+# Vim / Emacs
+*.swp
+*.swo
+*.swn
+*~
+.\#*
+
+# ===========================================
+# Sistema operativo
+# ===========================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+ehthumbs_view_db_windows.py
+
+# Linux
+*~
+
+# ===========================================
+# Backups y archivos temporales
+# ===========================================
+*.swp
+*.bak
+*.tmp
+*.orig
+*.rej
+*.save
+*~
+
+# ===========================================
+# Archivos de configuración local del usuario
+# ===========================================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ===========================================
+# Builds de Tauri
+# ===========================================
+src-tauri/target/release/
+src-tauri/target/debug/
+src-tauri/target/.fingerprint/
+src-tauri/target/.rustc_info.json
+src-tauri/target/.cargo-lock
