@@ -1,4 +1,4 @@
-name: Build Windows LTS
+name: Build Windows
 
 on:
   workflow_dispatch:
@@ -10,21 +10,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Node
-        uses: actions/setup-node@v4
+      - uses: pnpm/action-setup@v4
         with:
-          node-version: lts/*
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: Build
         run: pnpm tauri build
 
-      - name: Upload Installer
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: windows-build
