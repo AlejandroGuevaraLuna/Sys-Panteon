@@ -20,6 +20,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { gavetasService } from "./service";
+import { ImportExportButtons } from "@/features/import-export/ImportExportButtons";
 import { fosasService } from "@/features/fosas/service";
 import { lineasService } from "@/features/lineas/service";
 import { seccionesService } from "@/features/secciones/service";
@@ -152,6 +153,7 @@ export default function Gavetas() {
         <Button onClick={() => setOpenNueva(true)}>
           <Plus className="mr-2 h-4 w-4" /> Nueva gaveta
         </Button>
+        <ImportExportButtons tipo="gaveta" onImportado={cargar} />
       </div>
 
       {/* Filtros */}
@@ -262,7 +264,21 @@ export default function Gavetas() {
                       </TableCell>
                       <TableCell>
                         {r.ultimo_mantenimiento_anio != null
-                          ? <Badge variant="info">{r.ultimo_mantenimiento_anio}</Badge>
+                          ? (() => {
+                              const anioActual = new Date().getFullYear();
+                              const esActual = r.ultimo_mantenimiento_anio === anioActual;
+                              return (
+                                <Badge
+                                  variant={esActual ? "success" : "info"}
+                                  title={esActual
+                                    ? `Mantenimiento al corriente (${anioActual})`
+                                    : `Último mantenimiento en ${r.ultimo_mantenimiento_anio}`}
+                                >
+                                  {r.ultimo_mantenimiento_anio}
+                                  {esActual && " ✓"}
+                                </Badge>
+                              );
+                            })()
                           : <span className="text-muted-foreground italic text-sm">—</span>}
                       </TableCell>
                       <TableCell>

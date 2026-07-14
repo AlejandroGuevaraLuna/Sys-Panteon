@@ -105,10 +105,14 @@ export default function GavetaDetalle() {
           </Button>
           <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2 flex-wrap">
             <Box className="h-7 w-7" />
+            <span className="px-2 py-1 rounded bg-primary/10 text-primary">Sec {gaveta.seccion_codigo || "?"}</span>
+            <span className="text-muted-foreground">·</span>
+            <span className="px-2 py-1 rounded bg-primary/10 text-primary">Lín {gaveta.linea_codigo || "?"}</span>
+            <span className="text-muted-foreground">·</span>
             <span className="text-muted-foreground">Gaveta</span>
             <span className="px-3 py-1 rounded bg-primary text-primary-foreground text-2xl">#{gaveta.numero}</span>
           </h1>
-          <p className="text-muted-foreground">{gaveta.titular_nombre || "—"}</p>
+          <p className="text-muted-foreground">{gaveta.panteon_nombre || "—"} · {gaveta.titular_nombre || "—"}</p>
         </div>
         <div className="flex gap-2">
           <Button onClick={() => setOpenMemo(true)}>

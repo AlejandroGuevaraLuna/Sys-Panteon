@@ -18,6 +18,7 @@ import { fosasService } from "./service";
 import { lineasService } from "@/features/lineas/service";
 import { seccionesService } from "@/features/secciones/service";
 import { panteonesService } from "@/features/panteones/service";
+import { ImportExportButtons } from "@/features/import-export/ImportExportButtons";
 import { gavetasService } from "@/features/gavetas/service";
 import { EntidadFormTabs } from "@/components/shared/EntidadFormTabs";
 import { CAMPOS_VACIOS, type CamposEntidadForm } from "@/components/shared/EntidadFormTabs";
@@ -175,6 +176,7 @@ export default function Fosas() {
           <Button variant="outline" onClick={cargar} disabled={cargando}>
             Recargar
           </Button>
+          <ImportExportButtons tipo="fosa" onImportado={cargar} />
           <Dialog open={openDialog} onOpenChange={(o) => { if (!o) cerrarDialog(); else abrirDialog(); }}>
             <DialogTrigger asChild>
               <Button>
@@ -363,7 +365,21 @@ export default function Fosas() {
                     </TableCell>
                     <TableCell>
                       {f.ultimo_mantenimiento_anio != null
-                        ? <Badge variant="info">{f.ultimo_mantenimiento_anio}</Badge>
+                        ? (() => {
+                            const anioActual = new Date().getFullYear();
+                            const esActual = f.ultimo_mantenimiento_anio === anioActual;
+                            return (
+                              <Badge
+                                variant={esActual ? "success" : "info"}
+                                title={esActual
+                                  ? `Mantenimiento al corriente (${anioActual})`
+                                  : `Último mantenimiento en ${f.ultimo_mantenimiento_anio}`}
+                              >
+                                {f.ultimo_mantenimiento_anio}
+                                {esActual && " ✓"}
+                              </Badge>
+                            );
+                          })()
                         : <span className="text-muted-foreground italic text-sm">—</span>}
                     </TableCell>
                     <TableCell className="text-right">

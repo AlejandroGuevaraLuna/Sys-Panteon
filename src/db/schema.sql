@@ -99,8 +99,9 @@ CREATE TABLE IF NOT EXISTS fosas (
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (linea_id) REFERENCES lineas(id) ON DELETE CASCADE,
-  FOREIGN KEY (titular_id) REFERENCES titulares(id) ON DELETE SET NULL,
-  UNIQUE (linea_id, numero)
+  FOREIGN KEY (titular_id) REFERENCES titulares(id) ON DELETE SET NULL
+  -- NOTA: sin UNIQUE(linea_id, numero) — se permiten múltiples fosas
+  -- con la misma (línea, número) si tienen datos distintos.
 );
 CREATE INDEX IF NOT EXISTS idx_fosas_linea ON fosas(linea_id);
 CREATE INDEX IF NOT EXISTS idx_fosas_titular ON fosas(titular_nombre);
@@ -132,8 +133,9 @@ CREATE TABLE IF NOT EXISTS gavetas (
   predial_ultimo_pago_anio INTEGER,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (linea_id) REFERENCES lineas(id) ON DELETE CASCADE,
-  FOREIGN KEY (titular_id) REFERENCES titulares(id) ON DELETE SET NULL,
-  UNIQUE (linea_id, numero)
+  FOREIGN KEY (titular_id) REFERENCES titulares(id) ON DELETE SET NULL
+  -- NOTA: sin UNIQUE(linea_id, numero) — se permiten múltiples gavetas
+  -- con la misma (línea, número) si tienen datos distintos.
 );
 CREATE INDEX IF NOT EXISTS idx_gavetas_linea ON gavetas(linea_id);
 CREATE INDEX IF NOT EXISTS idx_gavetas_titular ON gavetas(titular_nombre);

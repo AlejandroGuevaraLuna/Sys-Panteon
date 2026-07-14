@@ -2,7 +2,7 @@ import Database from "@tauri-apps/plugin-sql";
 import schemaSql from "../db/schema.sql?raw";
 
 const DB_URL = "sqlite:panteon.db";
-const TARGET_VERSION = 5;
+const TARGET_VERSION = 7;
 
 let _db: Database | null = null;
 
@@ -111,6 +111,10 @@ async function aplicarMigraciones(db: Database): Promise<void> {
     await ejecutarEsquemaRobusto(db);
   } else if (current === 4) {
     await migrarV4aV5Preservando(db);
+  } else if (current === 5) {
+    await migrarV5aV6FechasOpcionales(db);
+  } else if (current === 6) {
+    await migrarV6aV7SinUniqueLineaNumero(db);
   }
   // Cualquier versión rara: reconstruir
   else {
@@ -123,6 +127,143 @@ async function aplicarMigraciones(db: Database): Promise<void> {
  * Migración v4 → v5 preservando datos del usuario.
  * Si tras la migración queda alguna tabla faltante, se crea vía ejecutarEsquemaRobusto.
  */
+/**
+ * Migración v6 → v7: elimina la restricción UNIQUE(linea_id, numero)
+ * de las tablas fosas y gavetas. El usuario decidió que se permita
+ * tener múltiples fosas/gavetas con la misma (línea, número) si tienen
+ * datos distintos (caso común en el Excel del panteón). La detección
+ * de duplicados se hace en el importador.
+ */
+async function migrarV6aV7SinUniqueLineaNumero(db: Database): Promise<void> {
+  console.info("[migrarV6aV7] INICIO — eliminando UNIQUE(linea_id, numero)");
+  await db.execute("PRAGMA foreign_keys = OFF");
+  try {
+    const hayFosas = await tableExists(db, "fosas");
+    if (hayFosas) {
+      const cols = await db.select<{ name: string; type: string; notnull: number; dflt_value: any }[]>(
+        `PRAGMA table_info(fosas)`,
+      );
+      const nombresCols = cols.map((c) => c.name);
+      const defsCols = cols.map((c) => {
+        const nn = c.notnull ? "NOT NULL" : "";
+        const dflt = c.dflt_value !== null ? `DEFAULT ${c.dflt_value}` : "";
+        return `${c.name} ${c.type} ${nn} ${dflt}`.trim();
+      });
+      const fkCols = await db.select<{ from: string; to: string }[]>(
+        `SELECT "from", "to" FROM pragma_foreign_key_list('fosas')`,
+      );
+      const fkClauses = fkCols.length > 0
+        ? `, FOREIGN KEY (${fkCols[0].from}) REFERENCES ${fkCols[0].to}(id) ON DELETE CASCADE`
+        : "";
+      await db.execute("CREATE TABLE fosas_new (\n        " +
+        defsCols.join(",\n        ") + fkClauses + "\n      )");
+      await db.execute(`INSERT INTO fosas_new (${nombresCols.join(", ")}) SELECT ${nombresCols.join(", ")} FROM fosas`);
+      await db.execute("DROP TABLE fosas");
+      await db.execute("ALTER TABLE fosas_new RENAME TO fosas");
+      await db.execute("CREATE INDEX IF NOT EXISTS idx_fosas_linea ON fosas(linea_id)");
+      await db.execute("CREATE INDEX IF NOT EXISTS idx_fosas_titular ON fosas(titular_nombre)");
+      console.info("[migrarV6aV7] fosas recreada sin UNIQUE");
+    }
+    const hayGavetas = await tableExists(db, "gavetas");
+    if (hayGavetas) {
+      const cols = await db.select<{ name: string; type: string; notnull: number; dflt_value: any }[]>(
+        `PRAGMA table_info(gavetas)`,
+      );
+      const nombresCols = cols.map((c) => c.name);
+      const defsCols = cols.map((c) => {
+        const nn = c.notnull ? "NOT NULL" : "";
+        const dflt = c.dflt_value !== null ? `DEFAULT ${c.dflt_value}` : "";
+        return `${c.name} ${c.type} ${nn} ${dflt}`.trim();
+      });
+      await db.execute("CREATE TABLE gavetas_new (\n        " + defsCols.join(",\n        ") + "\n      )");
+      await db.execute(`INSERT INTO gavetas_new (${nombresCols.join(", ")}) SELECT ${nombresCols.join(", ")} FROM gavetas`);
+      await db.execute("DROP TABLE gavetas");
+      await db.execute("ALTER TABLE gavetas_new RENAME TO gavetas");
+      await db.execute("CREATE INDEX IF NOT EXISTS idx_gavetas_linea ON gavetas(linea_id)");
+      console.info("[migrarV6aV7] gavetas recreada sin UNIQUE");
+    }
+  } finally {
+    await db.execute("PRAGMA foreign_keys = ON");
+  }
+  console.info("[migrarV6aV7] FIN");
+}
+
+async function migrarV5aV6FechasOpcionales(db: Database): Promise<void> {
+  console.info("[migrarV5aV6] INICIO — haciendo fechas opcionales");
+  await db.execute("PRAGMA foreign_keys = OFF");
+  try {
+    const haySepultaciones = await tableExists(db, "sepultaciones");
+    if (haySepultaciones) {
+      await db.execute(`
+        CREATE TABLE IF NOT EXISTS sepultaciones_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          fosa_id INTEGER,
+          gaveta_id INTEGER,
+          nombre TEXT NOT NULL,
+          fecha_sepultacion TEXT,
+          fecha_fallecimiento TEXT,
+          edad INTEGER,
+          notas TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          FOREIGN KEY (fosa_id) REFERENCES fosas(id) ON DELETE CASCADE,
+          FOREIGN KEY (gaveta_id) REFERENCES gavetas(id) ON DELETE CASCADE,
+          CHECK ((fosa_id IS NOT NULL AND gaveta_id IS NULL) OR
+                 (fosa_id IS NULL AND gaveta_id IS NOT NULL))
+        )
+      `);
+      await db.execute(`
+        INSERT INTO sepultaciones_new
+          (id, fosa_id, gaveta_id, nombre, fecha_sepultacion, fecha_fallecimiento, edad, notas, created_at)
+        SELECT id, fosa_id, gaveta_id, nombre,
+               NULLIF(fecha_sepultacion, ''),
+               NULLIF(fecha_fallecimiento, ''),
+               edad, notas, created_at
+        FROM sepultaciones
+      `);
+      await db.execute("DROP TABLE sepultaciones");
+      await db.execute("ALTER TABLE sepultaciones_new RENAME TO sepultaciones");
+      await db.execute("CREATE INDEX IF NOT EXISTS idx_sepultaciones_fosa ON sepultaciones(fosa_id)");
+      await db.execute("CREATE INDEX IF NOT EXISTS idx_sepultaciones_gaveta ON sepultaciones(gaveta_id)");
+      console.info("[migrarV5aV6] sepultaciones recreada");
+    }
+    const hayExhumaciones = await tableExists(db, "exhumaciones");
+    if (hayExhumaciones) {
+      await db.execute(`
+        CREATE TABLE IF NOT EXISTS exhumaciones_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          fosa_id INTEGER,
+          gaveta_id INTEGER,
+          nombre TEXT NOT NULL,
+          fecha_exhumacion TEXT,
+          destino TEXT,
+          notas TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          FOREIGN KEY (fosa_id) REFERENCES fosas(id) ON DELETE CASCADE,
+          FOREIGN KEY (gaveta_id) REFERENCES gavetas(id) ON DELETE CASCADE,
+          CHECK ((fosa_id IS NOT NULL AND gaveta_id IS NULL) OR
+                 (fosa_id IS NULL AND gaveta_id IS NOT NULL))
+        )
+      `);
+      await db.execute(`
+        INSERT INTO exhumaciones_new
+          (id, fosa_id, gaveta_id, nombre, fecha_exhumacion, destino, notas, created_at)
+        SELECT id, fosa_id, gaveta_id, nombre,
+               NULLIF(fecha_exhumacion, ''),
+               destino, notas, created_at
+        FROM exhumaciones
+      `);
+      await db.execute("DROP TABLE exhumaciones");
+      await db.execute("ALTER TABLE exhumaciones_new RENAME TO exhumaciones");
+      await db.execute("CREATE INDEX IF NOT EXISTS idx_exhumaciones_fosa ON exhumaciones(fosa_id)");
+      await db.execute("CREATE INDEX IF NOT EXISTS idx_exhumaciones_gaveta ON exhumaciones(gaveta_id)");
+      console.info("[migrarV5aV6] exhumaciones recreada");
+    }
+  } finally {
+    await db.execute("PRAGMA foreign_keys = ON");
+  }
+  console.info("[migrarV5aV6] FIN");
+}
+
 async function migrarV4aV5Preservando(db: Database): Promise<void> {
   console.info("[migrarV4aV5Preservando] INICIO");
   try {

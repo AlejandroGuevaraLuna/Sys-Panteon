@@ -10,6 +10,7 @@ import { seccionesService } from "@/features/secciones/service";
 import { lineasService } from "@/features/lineas/service";
 import { fosasService } from "@/features/fosas/service";
 import { gavetasService } from "@/features/gavetas/service";
+import { DevToolsPanel } from "@/features/import-export/DevToolsPanel";
 
 interface TblInfo {
   count: number;
@@ -190,6 +191,8 @@ export default function Diagnostico() {
           </Button>
         </div>
       </div>
+
+      <DevToolsPanel onChanged={diagnosticar} />
 
       {lastErr && (
         <Card className="border-destructive">
