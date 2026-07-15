@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Activity, Database, RefreshCcw, Trash2, AlertTriangle, CheckCircle2, Wrench } from "lucide-react";
+import { Activity, Database, RefreshCcw, Trash2, AlertTriangle, CheckCircle2, Wrench,
+  Archive, Save, RotateCcw, Loader2, FolderOpen, ExternalLink } from "lucide-react";
 import { getDb, closeDb, repairSchema } from "@/lib/db";
 import schemaSql from "@/db/schema.sql?raw";
 import { panteonesService } from "@/features/panteones/service";
@@ -11,10 +12,283 @@ import { lineasService } from "@/features/lineas/service";
 import { fosasService } from "@/features/fosas/service";
 import { gavetasService } from "@/features/gavetas/service";
 import { DevToolsPanel } from "@/features/import-export/DevToolsPanel";
+import {
+  listarBackups, crearBackup, eliminarBackup, restaurarBackup,
+  backupFormat, getBackupDir, MAX_BACKUPS, type BackupInfo, type BackupResult,
+} from "@/lib/backup";
+import { invoke } from "@tauri-apps/api/core";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from "@/components/ui/dialog";
 
 interface TblInfo {
   count: number;
   sample: unknown[];
+}
+
+/**
+ * Sección de respaldos automáticos: muestra los archivos en
+ * `<appDataDir>/backups/` y permite crear / restaurar / eliminar.
+ */
+function BackupsPanel() {
+  const [backups, setBackups] = useState<BackupInfo[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [lastResult, setLastResult] = useState<BackupResult | null>(null);
+  const [errorMsg, setErrorMsg] = useState("");
+  // Confirmación para eliminar
+  const [toDelete, setToDelete] = useState<BackupInfo | null>(null);
+  // Confirmación para restaurar
+  const [toRestore, setToRestore] = useState<BackupInfo | null>(null);
+  const [restoring, setRestoring] = useState(false);
+
+  const cargar = useCallback(async () => {
+    setLoading(true);
+    setErrorMsg("");
+    try {
+      const list = await listarBackups();
+      setBackups(list);
+    } catch (e) {
+      setErrorMsg((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { cargar(); }, [cargar]);
+
+  const onCrear = async () => {
+    setCreating(true);
+    setErrorMsg("");
+    try {
+      const r = await crearBackup();
+      setLastResult(r);
+      if (!r.ok) setErrorMsg(r.error || "Error desconocido");
+      await cargar();
+    } catch (e) {
+      setErrorMsg((e as Error).message);
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const onEliminar = async () => {
+    if (!toDelete) return;
+    try {
+      await eliminarBackup(toDelete.path);
+      setToDelete(null);
+      await cargar();
+    } catch (e) {
+      setErrorMsg(`No se pudo eliminar: ${(e as Error).message}`);
+      setToDelete(null);
+    }
+  };
+
+  const onRestaurar = async () => {
+    if (!toRestore) return;
+    setRestoring(true);
+    setErrorMsg("");
+    try {
+      const r = await restaurarBackup(toRestore.path);
+      if (!r.ok) {
+        setErrorMsg(`No se pudo restaurar: ${r.error}`);
+        return;
+      }
+      // Recargamos la app para que getDb() lea el archivo restaurado
+      window.location.reload();
+    } catch (e) {
+      setErrorMsg(`Error restaurando: ${(e as Error).message}`);
+    } finally {
+      setRestoring(false);
+      setToRestore(null);
+    }
+  };
+
+  const totalSize = backups.reduce((acc, b) => acc + b.size, 0);
+
+  const abrirCarpeta = async () => {
+    try {
+      const dir = await getBackupDir();
+      await invoke("abrir_en_explorador", { ruta: dir });
+    } catch (e) {
+      setErrorMsg(`No se pudo abrir la carpeta: ${(e as Error).message}`);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Archive className="h-5 w-5" />
+          Respaldos de la base de datos
+        </CardTitle>
+        <CardDescription>
+          Copias automáticas con <code className="text-xs">VACUUM INTO</code>. Se crean
+          cada vez que cierras la aplicación y también puedes crearlas manualmente aquí.
+          Se conservan los últimos <strong>{MAX_BACKUPS}</strong> archivos en
+          <code className="text-xs"> appDataDir/backups/</code>.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button onClick={onCrear} disabled={creating || loading}>
+            {creating
+              ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Creando…</>
+              : <><Save className="mr-2 h-4 w-4" /> Crear respaldo ahora</>
+            }
+          </Button>
+          <Button variant="outline" onClick={cargar} disabled={loading}>
+            <RefreshCcw className="mr-2 h-4 w-4" /> Refrescar lista
+          </Button>
+          <Button variant="ghost" size="sm" onClick={abrirCarpeta} title="Abrir carpeta en Finder/Explorer">
+            <ExternalLink className="mr-1 h-3 w-3" /> Abrir carpeta
+          </Button>
+          <div className="ml-auto text-xs text-muted-foreground flex items-center gap-2">
+            <Badge variant={backups.length > 0 ? "info" : "muted"}>
+              {backups.length} / {MAX_BACKUPS}
+            </Badge>
+            <span>Total: {backupFormat.bytes(totalSize)}</span>
+          </div>
+        </div>
+
+        {errorMsg && (
+          <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-900 flex items-start gap-2">
+            <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+            <span className="font-mono">{errorMsg}</span>
+          </div>
+        )}
+
+        {lastResult && lastResult.ok && (
+          <div className="rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900 flex items-start gap-2">
+            <CheckCircle2 className="h-4 w-4 mt-0.5 flex-shrink-0" />
+            <div>
+              Respaldo creado: <strong>{lastResult.filename}</strong> ·
+              tamaño {backupFormat.bytes(lastResult.size)} ·
+              {lastResult.rotated > 0
+                ? ` se rotaron ${lastResult.rotated} archivo(s)`
+                : ` sin rotación`}{" "}
+              · {lastResult.durationMs} ms
+            </div>
+          </div>
+        )}
+
+        {backups.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-muted-foreground/30 p-6 text-center text-sm text-muted-foreground">
+            <FolderOpen className="h-8 w-8 mx-auto mb-2 opacity-50" />
+            No hay respaldos todavía. Crea el primero con el botón de arriba
+            o cierra la aplicación para que se genere uno automático.
+          </div>
+        ) : (
+          <div className="rounded-lg border divide-y">
+            {backups.map((b, i) => (
+              <div
+                key={b.path}
+                className="flex items-center gap-3 px-3 py-2 text-sm"
+              >
+                <Badge variant={i === 0 ? "success" : "muted"} className="w-16 justify-center">
+                  {i === 0 ? "nuevo" : `#${i + 1}`}
+                </Badge>
+                <div className="flex-1 min-w-0">
+                  <div className="font-mono text-xs truncate" title={b.path}>
+                    {b.filename}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {backupFormat.dateTime(b.mtime)} · {backupFormat.bytes(b.size)}
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setToRestore(b)}
+                  disabled={i === 0}
+                  title={i === 0 ? "Este es el respaldo más reciente" : "Restaurar la BD a este punto"}
+                >
+                  <RotateCcw className="mr-1 h-3 w-3" /> Restaurar
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setToDelete(b)}
+                  className="text-red-700 hover:text-red-800 hover:bg-red-50"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+
+      {/* === Dialog: confirmar eliminar === */}
+      <Dialog open={toDelete !== null} onOpenChange={(o) => !o && setToDelete(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-700">
+              <AlertTriangle className="h-5 w-5" />
+              ¿Eliminar respaldo?
+            </DialogTitle>
+            <DialogDescription>
+              El archivo se borrará permanentemente del disco.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="text-sm">
+            <div className="font-mono text-xs bg-muted p-2 rounded">
+              {toDelete?.filename}
+            </div>
+            <div className="text-xs text-muted-foreground mt-1">
+              {toDelete ? backupFormat.dateTime(toDelete.mtime) : ""} · {toDelete ? backupFormat.bytes(toDelete.size) : ""}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setToDelete(null)}>Cancelar</Button>
+            <Button variant="destructive" onClick={onEliminar}>
+              <Trash2 className="mr-2 h-4 w-4" /> Sí, eliminar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* === Dialog: confirmar restaurar === */}
+      <Dialog open={toRestore !== null} onOpenChange={(o) => !o && !restoring && setToRestore(null)}>
+        <DialogContent className="sm:max-w-md border-amber-400">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-900">
+              <AlertTriangle className="h-5 w-5" />
+              ¿Restaurar este respaldo?
+            </DialogTitle>
+            <DialogDescription>
+              La base de datos actual será <strong>sobrescrita</strong> con el
+              contenido de este respaldo. La aplicación se recargará automáticamente.
+              Esta acción no se puede deshacer (pero tienes los demás respaldos para volver atrás).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="text-sm">
+            <div className="font-mono text-xs bg-muted p-2 rounded">
+              {toRestore?.filename}
+            </div>
+            <div className="text-xs text-muted-foreground mt-1">
+              {toRestore ? backupFormat.dateTime(toRestore.mtime) : ""} · {toRestore ? backupFormat.bytes(toRestore.size) : ""}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setToRestore(null)} disabled={restoring}>
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={onRestaurar}
+              disabled={restoring}
+            >
+              {restoring
+                ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Restaurando…</>
+                : <><RotateCcw className="mr-2 h-4 w-4" /> Sí, restaurar</>
+              }
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </Card>
+  );
 }
 
 export default function Diagnostico() {
@@ -193,6 +467,8 @@ export default function Diagnostico() {
       </div>
 
       <DevToolsPanel onChanged={diagnosticar} />
+
+      <BackupsPanel />
 
       {lastErr && (
         <Card className="border-destructive">
