@@ -141,7 +141,7 @@ export default function Gavetas() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
             <Box className="h-7 w-7" /> Gavetas
@@ -150,10 +150,12 @@ export default function Gavetas() {
             Vista global de todas las gavetas. La gaveta es la entidad principal con toda la información del titular.
           </p>
         </div>
-        <Button onClick={() => setOpenNueva(true)}>
-          <Plus className="mr-2 h-4 w-4" /> Nueva gaveta
-        </Button>
-        <ImportExportButtons tipo="gaveta" onImportado={cargar} />
+        <div className="flex gap-2">
+          <ImportExportButtons tipo="gaveta" onImportado={cargar} />
+          <Button onClick={() => setOpenNueva(true)}>
+            <Plus className="mr-2 h-4 w-4" /> Nueva gaveta
+          </Button>
+        </div>
       </div>
 
       {/* Filtros */}

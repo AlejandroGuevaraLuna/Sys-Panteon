@@ -12,12 +12,18 @@ import {
   TableHead,
   TableCell,
 } from '@/components/ui/table';
-import { Save, Trash2, Plus, Pencil, AlertTriangle } from 'lucide-react';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from '@/components/ui/dialog';
+import {
+  Save, Trash2, Plus, Pencil, AlertTriangle, Eye, User, Phone, MapPin,
+  Hash, Calendar, Users,
+} from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { fosasService } from '@/features/fosas/service';
 import { gavetasService } from '@/features/gavetas/service';
 import type { FosaDetalleCompleta } from '@/features/fosas/service';
-import type { GavetaDetalle } from '@/types';
+import type { GavetaDetalle, CambioTitular } from '@/types';
 
 export type Entidad = FosaDetalleCompleta | GavetaDetalle;
 
@@ -991,19 +997,32 @@ function CambiosSection({
 }: {
   tipo: 'fosa' | 'gaveta';
   id: number;
-  items: any[];
+  items: CambioTitular[];
   entidad: Entidad;
   onChange: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [nuevo, setNuevo] = useState('');
+  const [numeroTitulo, setNumeroTitulo] = useState('');
+  const [fechaTitulo, setFechaTitulo] = useState('');
+  const [beneficiario, setBeneficiario] = useState('');
   const [motivo, setMotivo] = useState('');
   const [guardando, setGuardando] = useState(false);
+  // Detalle del titular anterior que se muestra en el Dialog
+  const [verDetalle, setVerDetalle] = useState<CambioTitular | null>(null);
 
   // Fuente de verdad del titular anterior: el campo `titular_nombre` ACTUAL de
   // la ficha. Este campo se actualiza en cada cambio o edición manual, así que
   // refleja siempre "el que está hoy". El historial se conserva en `items`.
   const titularAnterior = entidad.titular_nombre || '';
+
+  const resetForm = () => {
+    setNuevo('');
+    setNumeroTitulo('');
+    setFechaTitulo('');
+    setBeneficiario('');
+    setMotivo('');
+  };
 
   const agregar = async () => {
     if (!nuevo.trim()) {
@@ -1012,34 +1031,56 @@ function CambiosSection({
     }
     setGuardando(true);
     try {
-      const data = {
+      // Snapshot del titular ANTERIOR: pasamos los datos ACTUALES de la
+      // ficha (que es lo que está hoy antes del cambio). Así la historia
+      // queda preservada aunque la ficha se modifique después.
+      const data: any = {
         titular_anterior_nombre: titularAnterior,
         titular_anterior_id: null,
+        titular_anterior_domicilio: entidad.titular_domicilio || '',
+        titular_anterior_telefono: entidad.titular_telefono || '',
+        titular_anterior_numero_titulo: entidad.numero_titulo || '',
+        titular_anterior_fecha_titulo: entidad.fecha_titulo || null,
+        titular_anterior_beneficiario: entidad.beneficiario || '',
         titular_nuevo_nombre: nuevo.trim(),
         titular_nuevo_id: null,
         fecha_cambio: new Date().toISOString().slice(0, 10),
         motivo: motivo || null,
+        // Si vienen vacíos, el service NO los aplica (mantiene el actual).
+        numero_titulo: numeroTitulo.trim() || '',
+        fecha_titulo: fechaTitulo || '',
+        beneficiario: beneficiario.trim() || '',
       };
       if (tipo === 'fosa')
         await fosasService.registrarCambioTitular({
           ...data,
           _fosa_id: id,
-        } as any);
+        });
       else
         await gavetasService.registrarCambioTitular({
           ...data,
           _gaveta_id: id,
-        } as any);
+        });
       onChange();
       setOpen(false);
-      setNuevo('');
-      setMotivo('');
+      resetForm();
     } catch (e) {
       console.error(e);
       alert('Error');
     } finally {
       setGuardando(false);
     }
+  };
+
+  // Helpers para detectar si hay datos del titular anterior (snapshot)
+  const tieneSnapshot = (c: CambioTitular) => {
+    return !!(
+      c.titular_anterior_domicilio ||
+      c.titular_anterior_telefono ||
+      c.titular_anterior_numero_titulo ||
+      c.titular_anterior_fecha_titulo ||
+      c.titular_anterior_beneficiario
+    );
   };
 
   return (
@@ -1068,14 +1109,51 @@ function CambiosSection({
                 <Input
                   value={nuevo}
                   onChange={(e) => setNuevo(e.target.value)}
+                  autoFocus
                 />
               </div>
-              <div>
-                <Label>Motivo</Label>
-                <Input
-                  value={motivo}
-                  onChange={(e) => setMotivo(e.target.value)}
-                />
+              <div className='grid grid-cols-1 md:grid-cols-2 gap-3'>
+                <div>
+                  <Label>N° de título</Label>
+                  <Input
+                    value={numeroTitulo}
+                    onChange={(e) => setNumeroTitulo(e.target.value)}
+                    placeholder={entidad.numero_titulo || 'Sin cambios'}
+                  />
+                  <p className='text-[11px] text-muted-foreground mt-1'>
+                    Déjalo vacío para conservar el actual.
+                  </p>
+                </div>
+                <div>
+                  <Label>Fecha del título</Label>
+                  <Input
+                    type='date'
+                    value={fechaTitulo}
+                    onChange={(e) => setFechaTitulo(e.target.value)}
+                  />
+                  <p className='text-[11px] text-muted-foreground mt-1'>
+                    Déjalo vacío para conservar la actual.
+                  </p>
+                </div>
+                <div className='md:col-span-2'>
+                  <Label>Beneficiario (opcional)</Label>
+                  <Input
+                    value={beneficiario}
+                    onChange={(e) => setBeneficiario(e.target.value)}
+                    placeholder={entidad.beneficiario || 'Sin cambios'}
+                  />
+                  <p className='text-[11px] text-muted-foreground mt-1'>
+                    Déjalo vacío para conservar el actual.
+                  </p>
+                </div>
+                <div className='md:col-span-2'>
+                  <Label>Motivo del cambio</Label>
+                  <Input
+                    value={motivo}
+                    onChange={(e) => setMotivo(e.target.value)}
+                    placeholder='Venta, herencia, donación, etc.'
+                  />
+                </div>
               </div>
               <div className='flex gap-2'>
                 <Button
@@ -1086,7 +1164,7 @@ function CambiosSection({
                 </Button>
                 <Button
                   variant='outline'
-                  onClick={() => setOpen(false)}
+                  onClick={() => { setOpen(false); resetForm(); }}
                   disabled={guardando}
                 >
                   Cancelar
@@ -1107,23 +1185,150 @@ function CambiosSection({
                 <TableHead>Anterior</TableHead>
                 <TableHead>Nuevo</TableHead>
                 <TableHead>Motivo</TableHead>
+                <TableHead className='w-24'></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {items.map((c) => (
                 <TableRow key={c.id}>
-                  <TableCell>{c.fecha_cambio}</TableCell>
-                  <TableCell>{c.titular_anterior_nombre || '—'}</TableCell>
+                  <TableCell className='whitespace-nowrap'>{c.fecha_cambio}</TableCell>
+                  <TableCell>
+                    <div className='font-medium'>
+                      {c.titular_anterior_nombre || (
+                        <span className='text-muted-foreground italic'>—</span>
+                      )}
+                    </div>
+                    {/* Resumen compacto: si hay domicilio o N° título, los muestra en una línea */}
+                    {(c.titular_anterior_domicilio || c.titular_anterior_numero_titulo) && (
+                      <div className='text-xs text-muted-foreground flex flex-wrap gap-x-2 mt-0.5'>
+                        {c.titular_anterior_numero_titulo && (
+                          <span className='flex items-center gap-1'>
+                            <Hash className='h-3 w-3' />
+                            {c.titular_anterior_numero_titulo}
+                          </span>
+                        )}
+                        {c.titular_anterior_domicilio && (
+                          <span className='truncate max-w-[200px]' title={c.titular_anterior_domicilio}>
+                            {c.titular_anterior_domicilio}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </TableCell>
                   <TableCell className='font-medium'>
                     {c.titular_nuevo_nombre}
                   </TableCell>
-                  <TableCell>{c.motivo || '—'}</TableCell>
+                  <TableCell className='text-sm'>{c.motivo || '—'}</TableCell>
+                  <TableCell>
+                    <Button
+                      variant='ghost'
+                      size='sm'
+                      onClick={() => setVerDetalle(c)}
+                      title={tieneSnapshot(c) ? 'Ver detalles del titular anterior' : 'Ver detalle (sin snapshot)'}
+                    >
+                      <Eye className='h-4 w-4' />
+                    </Button>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         )}
       </CardContent>
+
+      {/* Dialog con todos los detalles del titular anterior */}
+      <Dialog open={verDetalle !== null} onOpenChange={(o) => { if (!o) setVerDetalle(null); }}>
+        <DialogContent className='sm:max-w-lg'>
+          <DialogHeader>
+            <DialogTitle className='flex items-center gap-2'>
+              <User className='h-5 w-5' />
+              Detalle del titular anterior
+            </DialogTitle>
+            <DialogDescription>
+              {verDetalle && (
+                <span>
+                  Cambio del <strong>{verDetalle.fecha_cambio}</strong> · {verDetalle.motivo || 'sin motivo'}
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          {verDetalle && (
+            <div className='space-y-3 text-sm'>
+              <div>
+                <div className='text-xs text-muted-foreground flex items-center gap-1 mb-0.5'>
+                  <User className='h-3 w-3' /> Nombre
+                </div>
+                <div className='font-medium'>{verDetalle.titular_anterior_nombre || '—'}</div>
+              </div>
+              <div className='grid grid-cols-1 md:grid-cols-2 gap-3'>
+                <div>
+                  <div className='text-xs text-muted-foreground flex items-center gap-1 mb-0.5'>
+                    <Phone className='h-3 w-3' /> Teléfono
+                  </div>
+                  <div className='font-mono'>
+                    {verDetalle.titular_anterior_telefono || (
+                      <span className='text-muted-foreground italic'>— sin capturar —</span>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <div className='text-xs text-muted-foreground flex items-center gap-1 mb-0.5'>
+                    <Hash className='h-3 w-3' /> N° de título
+                  </div>
+                  <div className='font-mono'>
+                    {verDetalle.titular_anterior_numero_titulo || (
+                      <span className='text-muted-foreground italic'>— sin capturar —</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div>
+                <div className='text-xs text-muted-foreground flex items-center gap-1 mb-0.5'>
+                  <MapPin className='h-3 w-3' /> Domicilio
+                </div>
+                <div className='whitespace-pre-wrap'>
+                  {verDetalle.titular_anterior_domicilio || (
+                    <span className='text-muted-foreground italic'>— sin capturar —</span>
+                  )}
+                </div>
+              </div>
+              <div className='grid grid-cols-1 md:grid-cols-2 gap-3'>
+                <div>
+                  <div className='text-xs text-muted-foreground flex items-center gap-1 mb-0.5'>
+                    <Calendar className='h-3 w-3' /> Fecha del título
+                  </div>
+                  <div>
+                    {verDetalle.titular_anterior_fecha_titulo || (
+                      <span className='text-muted-foreground italic'>— sin capturar —</span>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <div className='text-xs text-muted-foreground flex items-center gap-1 mb-0.5'>
+                    <Users className='h-3 w-3' /> Beneficiario
+                  </div>
+                  <div>
+                    {verDetalle.titular_anterior_beneficiario || (
+                      <span className='text-muted-foreground italic'>— sin capturar —</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+              {!tieneSnapshot(verDetalle) && (
+                <div className='rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900'>
+                  <strong>Sin snapshot:</strong> este cambio se registró antes
+                  de v8, así que no hay detalle completo del titular anterior.
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant='outline' onClick={() => setVerDetalle(null)}>
+              Cerrar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

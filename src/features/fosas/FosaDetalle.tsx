@@ -4,10 +4,11 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Save, Cross, Pencil, Box, ScrollText } from "lucide-react";
-import { fosasService, type FosaDetalleCompleta } from "./service";
+import { ArrowLeft, Save, Cross, Pencil, Box, ScrollText, Users } from "lucide-react";
+import { fosasService, type FosaDetalleCompleta, type FosaVecina } from "./service";
 import { formatDateLong } from "@/lib/utils";
 import { EntidadSecciones } from "@/components/shared/EntidadSecciones";
+import { VecinasSheet, type VecinaMinima } from "@/components/shared/VecinasSheet";
 import FosaForm from "./FosaForm";
 import MemorandumDialog from "@/features/memorandums/MemorandumDialog";
 import { panteonesService } from "@/features/panteones/service";
@@ -22,6 +23,7 @@ export default function FosaDetalle() {
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [editando, setEditando] = useState(false);
   const [openMemo, setOpenMemo] = useState(false);
+  const [openVecinas, setOpenVecinas] = useState(false);
 
   const cargar = async () => {
     if (!fosaId) return;
@@ -84,6 +86,9 @@ export default function FosaDetalle() {
           <p className="text-muted-foreground">{fosa.panteon_nombre || "—"}</p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setOpenVecinas(true)}>
+            <Users className="mr-2 h-4 w-4" /> Fosas vecinas
+          </Button>
           <Button variant="outline" onClick={() => setEditando(!editando)}>
             {editando ? <><Save className="mr-2 h-4 w-4" /> Listo</> : <><Pencil className="mr-2 h-4 w-4" /> Editar</>}
           </Button>
@@ -134,6 +139,18 @@ export default function FosaDetalle() {
         config={config ?? undefined}
         titularEntidad={fosa.titular_nombre}
         onCreated={() => cargar()}
+      />
+
+      <VecinasSheet
+        tipo="fosa"
+        etiqueta="fosa"
+        entidadId={fosaId}
+        open={openVecinas}
+        onOpenChange={setOpenVecinas}
+        cargar={async (id, rango) => {
+          const lista: FosaVecina[] = await fosasService.vecinas(id, rango);
+          return lista as unknown as VecinaMinima[];
+        }}
       />
     </div>
   );

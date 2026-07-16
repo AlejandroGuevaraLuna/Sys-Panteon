@@ -23,6 +23,14 @@ export interface GavetaListado extends Gaveta {
   ultimo_mantenimiento_anio?: number | null;
 }
 
+/** Gaveta vecina devuelta por `vecinas()`: tiene contexto y sus sepultados. */
+export interface GavetaVecina extends GavetaListado {
+  seccion_id: number;
+  panteon_id: number;
+  /** Sepultados de esta gaveta, ordenados por fecha. */
+  sepultaciones: Array<{ id: number; nombre: string; fecha_sepultacion: string }>;
+}
+
 export const gavetasService = {
   async listar(linea_id?: number): Promise<GavetaListado[]> {
     const db = await getDb();
@@ -151,6 +159,87 @@ export const gavetasService = {
     await db.execute(`DELETE FROM gavetas WHERE id = ${n(id)}`);
   },
 
+  /**
+   * Devuelve las gavetas "vecinas" de una gaveta: las que están en la
+   * MISMA línea (y por lo tanto misma sección) y cuyo `numero` está
+   * dentro de `rango` unidades (por defecto ±3) de la gaveta original.
+   *
+   * Soporta números ALFANUMÉRICOS como "14-M", "6-B", "15M", "3-A", etc:
+   *  - Se parsean en prefijo numérico + sufijo de letra.
+   *  - Las vecinas se buscan DENTRO del mismo sufijo: una "14-M" sólo
+   *    matchea con otras "*-M", no con "*-B" ni con las de número solo.
+   *  - El rango se aplica sobre la parte numérica.
+   *
+   * Por la estructura del panteón, misma línea implica misma sección
+   * y mismo panteón, así que la validación de "misma sección" se cumple
+   * automáticamente al filtrar por `linea_id`.
+   *
+   * Para cada vecina, también trae sus sepultados (con su fecha).
+   */
+  async vecinas(gavetaId: number, rango = 3): Promise<GavetaVecina[]> {
+    const db = await getDb();
+    const gaveta = await this.obtener(gavetaId);
+    if (!gaveta) return [];
+    const lineaId = gaveta.linea_id;
+
+    // Parsear el número actual: puede ser entero puro (14) o alfanumérico
+    // ("14-M", "6/B", "15M"). Si no se puede parsear, no hay vecinas.
+    const actualParsed = parseNumeroGaveta(gaveta.numero);
+    if (!Number.isFinite(actualParsed.num)) return [];
+
+    // Traer TODAS las gavetas de la misma línea. No podemos filtrar por
+    // BETWEEN en SQL porque el sufijo alfabético hace que la comparación
+    // entera falle; lo hacemos client-side.
+    const todas = await db.select<Array<GavetaListado & { seccion_id: number; panteon_id: number }>>(
+      `SELECT g.*,
+              l.codigo AS linea_codigo, l.nombre AS linea_nombre,
+              s.id AS seccion_id, s.codigo AS seccion_codigo, s.nombre AS seccion_nombre,
+              p.id AS panteon_id, p.nombre AS panteon_nombre
+       FROM gavetas g
+       JOIN lineas l ON l.id = g.linea_id
+       JOIN secciones s ON s.id = l.seccion_id
+       JOIN panteones p ON p.id = s.panteon_id
+       WHERE g.linea_id = ${n(lineaId)}
+         AND g.id != ${n(gavetaId)}`,
+    );
+
+    // Filtrar por mismo sufijo y rango numérico, y ordenar.
+    const cercanas = todas
+      .map((g) => ({ g, parsed: parseNumeroGaveta(g.numero) }))
+      .filter(({ parsed }) =>
+        Number.isFinite(parsed.num) &&
+        parsed.sufijo === actualParsed.sufijo &&
+        Math.abs(parsed.num - actualParsed.num) <= rango,
+      )
+      .sort((a, b) => a.parsed.num - b.parsed.num)
+      .map(({ g }) => g);
+
+    if (!cercanas.length) return [];
+
+    // Traer todos los sepultados de las vecinas en una sola query.
+    const ids = cercanas.map((c) => c.id).join(",");
+    const seps = await db.select<Array<{
+      id: number; nombre: string; fecha_sepultacion: string; gaveta_id: number;
+    }>>(
+      `SELECT id, nombre, fecha_sepultacion, gaveta_id
+       FROM sepultaciones
+       WHERE gaveta_id IN (${ids})
+       ORDER BY fecha_sepultacion ASC`,
+    ).catch(() => []);
+
+    const sepsByGaveta = new Map<number, Array<{ id: number; nombre: string; fecha_sepultacion: string }>>();
+    for (const s of seps) {
+      const arr = sepsByGaveta.get(s.gaveta_id) ?? [];
+      arr.push({ id: s.id, nombre: s.nombre, fecha_sepultacion: s.fecha_sepultacion });
+      sepsByGaveta.set(s.gaveta_id, arr);
+    }
+
+    return cercanas.map((c) => ({
+      ...c,
+      sepultaciones: sepsByGaveta.get(c.id) ?? [],
+    }));
+  },
+
   // ----- Colecciones (sepultados, exhumaciones, mantenimiento, cambios titular) -----
 
   async agregarSepultacion(data: Omit<Sepultacion, "id" | "created_at"> & { _gaveta_id?: number; _fosa_id?: number }): Promise<number> {
@@ -224,7 +313,15 @@ export const gavetasService = {
     const db = await getDb();
     await db.execute(`DELETE FROM mantenimientos_pagados WHERE id = ${n(id)}`);
   },
-  async registrarCambioTitular(data: Omit<CambioTitular, "id"> & { _gaveta_id?: number; _fosa_id?: number }): Promise<number> {
+  async registrarCambioTitular(data: Omit<CambioTitular, "id"> & {
+    _gaveta_id?: number; _fosa_id?: number;
+    /** Si se envía (string no vacío), actualiza también `numero_titulo` de la ficha. */
+    numero_titulo?: string | null;
+    /** Si se envía (string no vacío), actualiza también `fecha_titulo` de la ficha. */
+    fecha_titulo?: string | null;
+    /** Si se envía (string no vacío), actualiza también `beneficiario` de la ficha. */
+    beneficiario?: string | null;
+  }): Promise<number> {
     const db = await getDb();
     const fosaId = data._fosa_id;
     const gavetaId = data._gaveta_id;
@@ -232,12 +329,56 @@ export const gavetasService = {
     const col = fosaId ? "fosa_id" : "gaveta_id";
     const val = fosaId ? n(fosaId) : n(gavetaId!);
     const updateCol = fosaId ? "fosas" : "gavetas";
+
+    // Snapshot del titular ANTERIOR: el frontend pasa los datos ACTUALES
+    // de la ficha (que es lo que está hoy antes del cambio). Así la
+    // historia queda preservada aunque la ficha se modifique después.
+    const ant_dom = data.titular_anterior_domicilio ?? "";
+    const ant_tel = data.titular_anterior_telefono ?? "";
+    const ant_num = data.titular_anterior_numero_titulo ?? "";
+    const ant_fec = data.titular_anterior_fecha_titulo ?? null;
+    const ant_ben = data.titular_anterior_beneficiario ?? "";
+
     const rows = await db.select<{ id: number }[]>(
-      `INSERT INTO cambios_titular (${col}, titular_anterior_id, titular_anterior_nombre, titular_nuevo_id, titular_nuevo_nombre, fecha_cambio, motivo, memorandum_id) VALUES (${val}, ${data.titular_anterior_id ?? "NULL"}, ${esc(data.titular_anterior_nombre ?? "")}, ${data.titular_nuevo_id ?? "NULL"}, ${esc(data.titular_nuevo_nombre ?? "")}, ${esc(data.fecha_cambio)}, ${data.motivo ? esc(data.motivo) : "NULL"}, ${data.memorandum_id ?? "NULL"}) RETURNING id`
+      `INSERT INTO cambios_titular (
+        ${col},
+        titular_anterior_id, titular_anterior_nombre,
+        titular_anterior_domicilio, titular_anterior_telefono,
+        titular_anterior_numero_titulo, titular_anterior_fecha_titulo,
+        titular_anterior_beneficiario,
+        titular_nuevo_id, titular_nuevo_nombre,
+        fecha_cambio, motivo, memorandum_id
+      ) VALUES (
+        ${val},
+        ${data.titular_anterior_id ?? "NULL"}, ${esc(data.titular_anterior_nombre ?? "")},
+        ${esc(ant_dom)}, ${esc(ant_tel)},
+        ${esc(ant_num)}, ${ant_fec ? esc(ant_fec) : "NULL"},
+        ${esc(ant_ben)},
+        ${data.titular_nuevo_id ?? "NULL"}, ${esc(data.titular_nuevo_nombre ?? "")},
+        ${esc(data.fecha_cambio)}, ${data.motivo ? esc(data.motivo) : "NULL"},
+        ${data.memorandum_id ?? "NULL"}
+      ) RETURNING id`
     );
     const newId = rows?.[0]?.id ?? 0;
+
+    // Construir el UPDATE sólo con los campos que vinieron con valor.
+    // Un string VACÍO significa "no cambiar"; un string con valor significa
+    // "actualizar a este valor".
+    const sets: string[] = [
+      `titular_id=${data.titular_nuevo_id ?? "NULL"}`,
+      `titular_nombre=${esc(data.titular_nuevo_nombre ?? "")}`,
+    ];
+    if (data.numero_titulo !== undefined && data.numero_titulo !== "") {
+      sets.push(`numero_titulo=${esc(data.numero_titulo)}`);
+    }
+    if (data.fecha_titulo !== undefined && data.fecha_titulo !== "") {
+      sets.push(`fecha_titulo=${esc(data.fecha_titulo)}`);
+    }
+    if (data.beneficiario !== undefined && data.beneficiario !== "") {
+      sets.push(`beneficiario=${esc(data.beneficiario)}`);
+    }
     await db.execute(
-      `UPDATE ${updateCol} SET titular_id=${data.titular_nuevo_id ?? "NULL"}, titular_nombre=${esc(data.titular_nuevo_nombre ?? "")} WHERE id = ${val}`
+      `UPDATE ${updateCol} SET ${sets.join(", ")} WHERE id = ${val}`
     );
     return newId;
   },
@@ -271,7 +412,7 @@ async function cargarExhumaciones(db: any, gaveta_id: number): Promise<Exhumacio
 async function cargarMantenimientos(db: any, gaveta_id: number): Promise<MantenimientoPagado[]> {
   try {
     const r = await db.select(
-      `SELECT * FROM mantenimientos_pagados WHERE gaveta_id = ${gaveta_id} ORDER BY anio ASC`
+      `SELECT * FROM mantenimientos_pagados WHERE gaveta_id = ${gaveta_id} ORDER BY anio DESC`
     );
     return (r || []) as MantenimientoPagado[];
   } catch { return []; }
@@ -283,4 +424,36 @@ async function cargarCambios(db: any, gaveta_id: number): Promise<CambioTitular[
     );
     return (r || []) as CambioTitular[];
   } catch { return []; }
+}
+
+/**
+ * Parsea el `numero` de una gaveta, que puede ser:
+ *  - INTEGER puro: 14
+ *  - TEXT con sufijo de letra: "14-M", "6/B", "15M", "3-A", " 7 B "
+ *  - Texto raro que no se puede parsear → { num: NaN, sufijo: "" }
+ *
+ * El sufijo se usa para AGRUPAR gavetas de la misma "serie" (M, B, A...).
+ * Las vecinas se buscan sólo dentro de la misma serie para que una "14-M"
+ * no aparezca como vecina de una "14" a secas o de una "14-B".
+ */
+function parseNumeroGaveta(
+  n: number | string | null | undefined,
+): { num: number; sufijo: string } {
+  if (n === null || n === undefined) return { num: NaN, sufijo: "" };
+  const s = String(n).trim();
+  if (s === "") return { num: NaN, sufijo: "" };
+
+  // Acepta:
+  //   "14"     → { num: 14, sufijo: "" }
+  //   "14-M"   → { num: 14, sufijo: "M" }
+  //   "14M"    → { num: 14, sufijo: "M" }
+  //   "14/B"   → { num: 14, sufijo: "B" }
+  //   " 7 B "  → { num: 7,  sufijo: "B" }
+  //   "M-14"   → no matchea (letra primero); regresamos NaN
+  const m = s.match(/^(\d+)\s*[-/]?\s*([A-Za-z]*)$/);
+  if (!m) return { num: NaN, sufijo: "" };
+  return {
+    num: parseInt(m[1], 10),
+    sufijo: (m[2] || "").toUpperCase(),
+  };
 }

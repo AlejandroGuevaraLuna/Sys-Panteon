@@ -1,16 +1,22 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   Home, Landmark, LayoutGrid, Rows3, Cross, Package, Wrench, ScrollText,
   BarChart3, Settings as SettingsIcon, Activity, Sun, Moon, ChevronRight,
-  ChevronLeft, LogOut,
+  ChevronLeft, LogOut, Tag, Database,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/hooks/useTheme";
 import { useAuth } from "@/features/auth/AuthContext";
+import { getDb } from "@/lib/db";
 import logoPabe from "@/img/Logo-Pabe.png";
+
+/** Versión de la app (frontend). Se muestra en el navbar. */
+const APP_VERSION = "1.1.9";
+/** Versión objetivo del esquema de BD (debe coincidir con TARGET_VERSION en db.ts). */
+const DB_TARGET_VERSION = 8;
 
 const navItems: { to: string; label: string; icon: typeof Home; end?: boolean; adminOnly?: boolean }[] = [
   { to: "/", label: "Inicio", icon: Home, end: true },
@@ -54,6 +60,32 @@ export default function MainLayout() {
   const { theme, toggleTheme } = useTheme();
   const { usuario, logout } = useAuth();
   const [colapsado, setColapsado] = useState(false);
+  // Versión real del esquema de BD (PRAGMA user_version). Se lee al
+  // montar para confirmar que las migraciones corrieron OK.
+  const [dbVersion, setDbVersion] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const db = await getDb();
+        const rows = await db.select<{ user_version: number }[]>(
+          "PRAGMA user_version",
+        );
+        if (!cancelled) setDbVersion(rows?.[0]?.user_version ?? 0);
+      } catch {
+        // Silencioso: si falla, el badge sólo muestra la versión de la app.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const dbAlDia = dbVersion === DB_TARGET_VERSION;
+  const versionTooltip = dbVersion === null
+    ? `App v${APP_VERSION} · verificando esquema de BD…`
+    : dbAlDia
+      ? `App v${APP_VERSION} · esquema de BD al día (v${dbVersion})`
+      : `App v${APP_VERSION} · esquema de BD desactualizado (v${dbVersion} → esperado v${DB_TARGET_VERSION})`;
 
   return (
     <div className="flex h-screen w-full bg-muted/30">
@@ -140,7 +172,27 @@ export default function MainLayout() {
             </div>
           )}
           <div className={`flex items-center ${colapsado ? "flex-col gap-1" : "justify-between"}`}>
-            {!colapsado && <Badge variant="muted" className="text-xs">v1.1.9</Badge>}
+            {/* Badge de versión — SIEMPRE visible (incluso con sidebar colapsado).
+               Muestra la versión de la app y, con tooltip, la del esquema de BD. */}
+            <Badge
+              variant={dbAlDia ? "muted" : "warning"}
+              className={`text-xs font-mono ${colapsado ? "" : "gap-1"}`}
+              title={versionTooltip}
+            >
+              {colapsado ? (
+                <Tag className="h-3.5 w-3.5" />
+              ) : (
+                <>
+                  <Tag className="h-3 w-3" />
+                  <span>v{APP_VERSION}</span>
+                  {dbVersion !== null && (
+                    <span className="text-muted-foreground/80 font-normal">
+                      · BD v{dbVersion}
+                    </span>
+                  )}
+                </>
+              )}
+            </Badge>
             <div className="flex items-center gap-1">
               <Button
                 variant="ghost" size="icon" onClick={toggleTheme}
@@ -158,7 +210,17 @@ export default function MainLayout() {
               </Button>
             </div>
           </div>
-          {!colapsado && <div className="text-xs text-muted-foreground px-1">Datos locales · SQLite</div>}
+          {!colapsado && (
+            <div className="text-xs text-muted-foreground px-1 flex items-center gap-1">
+              <Database className="h-3 w-3" />
+              Datos locales · SQLite
+              {dbVersion !== null && !dbAlDia && (
+                <span className="text-amber-700 font-medium">
+                  · migración pendiente
+                </span>
+              )}
+            </div>
+          )}
         </div>
       </aside>
 

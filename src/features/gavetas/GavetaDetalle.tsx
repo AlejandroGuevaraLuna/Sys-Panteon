@@ -3,10 +3,11 @@ import { useParams, Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Save, Box, Pencil, ScrollText } from "lucide-react";
-import { gavetasService } from "./service";
+import { ArrowLeft, Save, Box, Pencil, ScrollText, Users } from "lucide-react";
+import { gavetasService, type GavetaVecina } from "./service";
 import type { GavetaDetalle, Panteon, AppConfig } from "@/types";
 import { EntidadSecciones } from "@/components/shared/EntidadSecciones";
+import { VecinasSheet, type VecinaMinima } from "@/components/shared/VecinasSheet";
 import MemorandumDialog from "@/features/memorandums/MemorandumDialog";
 import { panteonesService } from "@/features/panteones/service";
 import { configuracionService } from "@/features/configuracion/service";
@@ -18,6 +19,7 @@ export default function GavetaDetalle() {
   const [panteon, setPanteon] = useState<Panteon | null>(null);
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [openMemo, setOpenMemo] = useState(false);
+  const [openVecinas, setOpenVecinas] = useState(false);
 
   const cargar = async () => {
     if (!gavetaId) return;
@@ -115,6 +117,9 @@ export default function GavetaDetalle() {
           <p className="text-muted-foreground">{gaveta.panteon_nombre || "—"} · {gaveta.titular_nombre || "—"}</p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setOpenVecinas(true)}>
+            <Users className="mr-2 h-4 w-4" /> Gavetas vecinas
+          </Button>
           <Button onClick={() => setOpenMemo(true)}>
             <ScrollText className="mr-2 h-4 w-4" /> Memorandums
           </Button>
@@ -151,6 +156,18 @@ export default function GavetaDetalle() {
         config={config ?? undefined}
         titularEntidad={gaveta.titular_nombre}
         onCreated={() => cargar()}
+      />
+
+      <VecinasSheet
+        tipo="gaveta"
+        etiqueta="gaveta"
+        entidadId={gavetaId}
+        open={openVecinas}
+        onOpenChange={setOpenVecinas}
+        cargar={async (id, rango) => {
+          const lista: GavetaVecina[] = await gavetasService.vecinas(id, rango);
+          return lista as unknown as VecinaMinima[];
+        }}
       />
     </div>
   );

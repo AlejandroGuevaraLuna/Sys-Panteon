@@ -84,6 +84,12 @@ export interface MantenimientoPagado {
 export interface CambioTitular {
   id: number; fosa_id?: number | null; gaveta_id?: number | null;
   titular_anterior_id: number | null; titular_anterior_nombre: string;
+  /** Snapshot del titular anterior al momento del cambio (v8+). */
+  titular_anterior_domicilio?: string;
+  titular_anterior_telefono?: string;
+  titular_anterior_numero_titulo?: string;
+  titular_anterior_fecha_titulo?: string | null;
+  titular_anterior_beneficiario?: string;
   titular_nuevo_id: number | null; titular_nuevo_nombre: string;
   fecha_cambio: string; motivo: string | null; memorandum_id: number | null;
 }

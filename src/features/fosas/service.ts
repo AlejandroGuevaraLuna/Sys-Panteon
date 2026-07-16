@@ -40,6 +40,14 @@ export interface FosaListado extends Fosa {
   ultimo_mantenimiento_anio?: number | null;
 }
 
+/** Fosa vecina devuelta por `vecinas()`: tiene contexto y sus sepultados. */
+export interface FosaVecina extends FosaListado {
+  seccion_id: number;
+  panteon_id: number;
+  /** Sepultados de esta fosa, ordenados por fecha. */
+  sepultaciones: Array<{ id: number; nombre: string; fecha_sepultacion: string }>;
+}
+
 export const fosasService = {
   async listar(filtros: FosaFiltros = {}): Promise<FosaListado[]> {
     const db = await getDb();
@@ -133,7 +141,7 @@ export const fosasService = {
     const exhumaciones = await safeCar<Exhumacion[]>(
       db.select(`SELECT * FROM exhumaciones WHERE fosa_id = ${safe} ORDER BY fecha_exhumacion ASC`), []);
     const mantenimientos = await safeCar<MantenimientoPagado[]>(
-      db.select(`SELECT * FROM mantenimientos_pagados WHERE fosa_id = ${safe} ORDER BY anio ASC`), []);
+      db.select(`SELECT * FROM mantenimientos_pagados WHERE fosa_id = ${safe} ORDER BY anio DESC`), []);
     const cambios_titular = await safeCar<CambioTitular[]>(
       db.select(`SELECT * FROM cambios_titular WHERE fosa_id = ${safe} ORDER BY fecha_cambio DESC`), []);
 
@@ -215,6 +223,81 @@ export const fosasService = {
     await db.execute(`DELETE FROM fosas WHERE id = ${n(id)}`);
   },
 
+  /**
+   * Devuelve las fosas "vecinas" de una fosa: las que están en la MISMA
+   * línea (y por lo tanto misma sección) y cuyo `numero` está dentro de
+   * `rango` unidades (por defecto ±3) de la fosa original.
+   *
+   * Por la estructura del panteón, misma línea implica misma sección y
+   * mismo panteón, así que la validación de "misma sección" se cumple
+   * automáticamente al filtrar por `linea_id`.
+   *
+   * Para cada vecina, también trae sus sepultados (con su fecha).
+   */
+  async vecinas(fosaId: number, rango = 3): Promise<FosaVecina[]> {
+    const db = await getDb();
+    const fosa = await this.obtener(fosaId);
+    if (!fosa) return [];
+    const lineaId = fosa.linea_id;
+    const numActual = parseInt(String(fosa.numero), 10);
+    if (!Number.isFinite(numActual)) {
+      // Si el numero no es numérico (ej. "1A"), no podemos calcular
+      // "cercanía" por número. Regresamos vacío en ese caso.
+      return [];
+    }
+    const minN = numActual - rango;
+    const maxN = numActual + rango;
+
+    // Traer TODAS las fosas de la misma línea, en una sola query.
+    // (Si la línea tiene miles de fosas habría que paginar, pero en la
+    // práctica una línea tiene decenas, así que está OK.)
+    const todas = await db.select<Array<FosaListado & { seccion_id: number; panteon_id: number }>>(
+      `SELECT f.*,
+              l.codigo AS linea_codigo, l.nombre AS linea_nombre,
+              s.id AS seccion_id, s.codigo AS seccion_codigo, s.nombre AS seccion_nombre,
+              p.id AS panteon_id, p.nombre AS panteon_nombre
+       FROM fosas f
+       JOIN lineas l ON l.id = f.linea_id
+       JOIN secciones s ON s.id = l.seccion_id
+       JOIN panteones p ON p.id = s.panteon_id
+       WHERE f.linea_id = ${n(lineaId)}
+         AND f.id != ${n(fosaId)}`,
+    );
+    // Filtrar y ordenar client-side porque el `numero` es TEXT y puede
+    // tener valores no numéricos (ej. "1A"). Sólo nos quedamos con los
+    // que se pueden parsear como entero y caen dentro del rango.
+    const cercanas = todas
+      .map((f) => ({ f, n: parseInt(String(f.numero), 10) }))
+      .filter(({ n: tn }) => Number.isFinite(tn) && Math.abs(tn - numActual) <= rango)
+      .sort((a, b) => a.n - b.n)
+      .map(({ f }) => f);
+
+    if (!cercanas.length) return [];
+
+    // Traer todos los sepultados de las vecinas en una sola query.
+    const ids = cercanas.map((c) => c.id).join(",");
+    const seps = await db.select<Array<{
+      id: number; nombre: string; fecha_sepultacion: string; fosa_id: number;
+    }>>(
+      `SELECT id, nombre, fecha_sepultacion, fosa_id
+       FROM sepultaciones
+       WHERE fosa_id IN (${ids})
+       ORDER BY fecha_sepultacion ASC`,
+    ).catch(() => []);
+
+    const sepsByFosa = new Map<number, Array<{ id: number; nombre: string; fecha_sepultacion: string }>>();
+    for (const s of seps) {
+      const arr = sepsByFosa.get(s.fosa_id) ?? [];
+      arr.push({ id: s.id, nombre: s.nombre, fecha_sepultacion: s.fecha_sepultacion });
+      sepsByFosa.set(s.fosa_id, arr);
+    }
+
+    return cercanas.map((c) => ({
+      ...c,
+      sepultaciones: sepsByFosa.get(c.id) ?? [],
+    }));
+  },
+
   async agregarSepultacion(data: Omit<Sepultacion, "id" | "created_at" | "fosa_id" | "gaveta_id"> & { _fosa_id?: number; _gaveta_id?: number }): Promise<number> {
     const db = await getDb();
     const fosaId = data._fosa_id;
@@ -285,7 +368,15 @@ export const fosasService = {
     const db = await getDb();
     await db.execute(`DELETE FROM mantenimientos_pagados WHERE id = ${n(id)}`);
   },
-  async registrarCambioTitular(data: Omit<CambioTitular, "id"> & { _fosa_id?: number; _gaveta_id?: number }): Promise<number> {
+  async registrarCambioTitular(data: Omit<CambioTitular, "id"> & {
+    _fosa_id?: number; _gaveta_id?: number;
+    /** Si se envía (string no vacío), actualiza también `numero_titulo` de la ficha. */
+    numero_titulo?: string | null;
+    /** Si se envía (string no vacío), actualiza también `fecha_titulo` de la ficha. */
+    fecha_titulo?: string | null;
+    /** Si se envía (string no vacío), actualiza también `beneficiario` de la ficha. */
+    beneficiario?: string | null;
+  }): Promise<number> {
     const db = await getDb();
     const fosaId = data._fosa_id;
     const gavetaId = data._gaveta_id;
@@ -293,12 +384,56 @@ export const fosasService = {
     const col = fosaId ? "fosa_id" : "gaveta_id";
     const val = fosaId ? n(fosaId) : n(gavetaId!);
     const updateCol = fosaId ? "fosas" : "gavetas";
+
+    // Snapshot del titular ANTERIOR: el frontend pasa los datos ACTUALES
+    // de la ficha (que es lo que está hoy antes del cambio). Así la
+    // historia queda preservada aunque la ficha se modifique después.
+    const ant_dom = data.titular_anterior_domicilio ?? "";
+    const ant_tel = data.titular_anterior_telefono ?? "";
+    const ant_num = data.titular_anterior_numero_titulo ?? "";
+    const ant_fec = data.titular_anterior_fecha_titulo ?? null;
+    const ant_ben = data.titular_anterior_beneficiario ?? "";
+
     const rows = await db.select<{ id: number }[]>(
-      `INSERT INTO cambios_titular (${col}, titular_anterior_id, titular_anterior_nombre, titular_nuevo_id, titular_nuevo_nombre, fecha_cambio, motivo, memorandum_id) VALUES (${val}, ${data.titular_anterior_id ?? "NULL"}, ${esc(data.titular_anterior_nombre ?? "")}, ${data.titular_nuevo_id ?? "NULL"}, ${esc(data.titular_nuevo_nombre ?? "")}, ${esc(data.fecha_cambio)}, ${data.motivo ? esc(data.motivo) : "NULL"}, ${data.memorandum_id ?? "NULL"}) RETURNING id`
+      `INSERT INTO cambios_titular (
+        ${col},
+        titular_anterior_id, titular_anterior_nombre,
+        titular_anterior_domicilio, titular_anterior_telefono,
+        titular_anterior_numero_titulo, titular_anterior_fecha_titulo,
+        titular_anterior_beneficiario,
+        titular_nuevo_id, titular_nuevo_nombre,
+        fecha_cambio, motivo, memorandum_id
+      ) VALUES (
+        ${val},
+        ${data.titular_anterior_id ?? "NULL"}, ${esc(data.titular_anterior_nombre ?? "")},
+        ${esc(ant_dom)}, ${esc(ant_tel)},
+        ${esc(ant_num)}, ${ant_fec ? esc(ant_fec) : "NULL"},
+        ${esc(ant_ben)},
+        ${data.titular_nuevo_id ?? "NULL"}, ${esc(data.titular_nuevo_nombre ?? "")},
+        ${esc(data.fecha_cambio)}, ${data.motivo ? esc(data.motivo) : "NULL"},
+        ${data.memorandum_id ?? "NULL"}
+      ) RETURNING id`
     );
     const newId = rows?.[0]?.id ?? 0;
+
+    // Construir el UPDATE sólo con los campos que vinieron con valor.
+    // Un string VACÍO significa "no cambiar"; un string con valor significa
+    // "actualizar a este valor".
+    const sets: string[] = [
+      `titular_id=${data.titular_nuevo_id ?? "NULL"}`,
+      `titular_nombre=${esc(data.titular_nuevo_nombre ?? "")}`,
+    ];
+    if (data.numero_titulo !== undefined && data.numero_titulo !== "") {
+      sets.push(`numero_titulo=${esc(data.numero_titulo)}`);
+    }
+    if (data.fecha_titulo !== undefined && data.fecha_titulo !== "") {
+      sets.push(`fecha_titulo=${esc(data.fecha_titulo)}`);
+    }
+    if (data.beneficiario !== undefined && data.beneficiario !== "") {
+      sets.push(`beneficiario=${esc(data.beneficiario)}`);
+    }
     await db.execute(
-      `UPDATE ${updateCol} SET titular_id=${data.titular_nuevo_id ?? "NULL"}, titular_nombre=${esc(data.titular_nuevo_nombre ?? "")} WHERE id = ${val}`
+      `UPDATE ${updateCol} SET ${sets.join(", ")} WHERE id = ${val}`
     );
     return newId;
   },

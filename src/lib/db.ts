@@ -2,7 +2,7 @@ import Database from "@tauri-apps/plugin-sql";
 import schemaSql from "../db/schema.sql?raw";
 
 const DB_URL = "sqlite:panteon.db";
-const TARGET_VERSION = 7;
+const TARGET_VERSION = 8;
 
 let _db: Database | null = null;
 
@@ -115,6 +115,8 @@ async function aplicarMigraciones(db: Database): Promise<void> {
     await migrarV5aV6FechasOpcionales(db);
   } else if (current === 6) {
     await migrarV6aV7SinUniqueLineaNumero(db);
+  } else if (current === 7) {
+    await migrarV7aV8SnapshotTitularAnterior(db);
   }
   // Cualquier versión rara: reconstruir
   else {
@@ -186,6 +188,47 @@ async function migrarV6aV7SinUniqueLineaNumero(db: Database): Promise<void> {
     await db.execute("PRAGMA foreign_keys = ON");
   }
   console.info("[migrarV6aV7] FIN");
+}
+
+/**
+ * Migración v7 → v8: añade columnas de SNAPSHOT a `cambios_titular`
+ * para guardar el detalle del titular anterior al momento del cambio:
+ *   - titular_anterior_domicilio
+ *   - titular_anterior_telefono
+ *   - titular_anterior_numero_titulo
+ *   - titular_anterior_fecha_titulo
+ *   - titular_anterior_beneficiario
+ *
+ * Los registros anteriores a v8 tendrán estos campos vacíos — el
+ * snapshot no se puede reconstruir, pero la app sigue funcionando.
+ * Los registros nuevos (a partir de v8) ya traerán los datos.
+ */
+async function migrarV7aV8SnapshotTitularAnterior(db: Database): Promise<void> {
+  console.info("[migrarV7aV8] INICIO — añadiendo columnas snapshot a cambios_titular");
+  const existe = await tableExists(db, "cambios_titular");
+  if (!existe) {
+    console.info("[migrarV7aV8] tabla cambios_titular no existe, la crea ejecutarEsquemaRobusto");
+    await ejecutarEsquemaRobusto(db);
+    return;
+  }
+  const cols = await db.select<{ name: string }[]>(`PRAGMA table_info(cambios_titular)`);
+  const nombres = new Set((cols || []).map((c) => String(c.name).toLowerCase()));
+  const agregar = async (col: string, decl: string) => {
+    if (!nombres.has(col)) {
+      try {
+        await db.execute(`ALTER TABLE cambios_titular ADD COLUMN ${col} ${decl}`);
+        console.info(`[migrarV7aV8] añadida cambios_titular.${col}`);
+      } catch (e) {
+        console.warn(`[migrarV7aV8] ${col}: ${e}`);
+      }
+    }
+  };
+  await agregar("titular_anterior_domicilio", "TEXT NOT NULL DEFAULT ''");
+  await agregar("titular_anterior_telefono", "TEXT NOT NULL DEFAULT ''");
+  await agregar("titular_anterior_numero_titulo", "TEXT NOT NULL DEFAULT ''");
+  await agregar("titular_anterior_fecha_titulo", "TEXT");
+  await agregar("titular_anterior_beneficiario", "TEXT NOT NULL DEFAULT ''");
+  console.info("[migrarV7aV8] FIN");
 }
 
 async function migrarV5aV6FechasOpcionales(db: Database): Promise<void> {
@@ -515,6 +558,11 @@ async function forceCreateCollectionTables(
         gaveta_id INTEGER,
         titular_anterior_id INTEGER,
         titular_anterior_nombre TEXT NOT NULL DEFAULT '',
+        titular_anterior_domicilio TEXT NOT NULL DEFAULT '',
+        titular_anterior_telefono TEXT NOT NULL DEFAULT '',
+        titular_anterior_numero_titulo TEXT NOT NULL DEFAULT '',
+        titular_anterior_fecha_titulo TEXT,
+        titular_anterior_beneficiario TEXT NOT NULL DEFAULT '',
         titular_nuevo_id INTEGER,
         titular_nuevo_nombre TEXT NOT NULL DEFAULT '',
         fecha_cambio TEXT NOT NULL,

@@ -201,12 +201,21 @@ CREATE INDEX IF NOT EXISTS idx_mantenimientos_fosa ON mantenimientos_pagados(fos
 CREATE INDEX IF NOT EXISTS idx_mantenimientos_gaveta ON mantenimientos_pagados(gaveta_id);
 
 -- Cambios de titular
+-- A partir de v8 se guardan columnas de SNAPSHOT del titular anterior
+-- (domicilio, teléfono, N° título, fecha título, beneficiario) al
+-- momento del cambio, para que la UI pueda mostrar el detalle aunque
+-- el titular se haya editado/borrado después.
 CREATE TABLE IF NOT EXISTS cambios_titular (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   fosa_id INTEGER,
   gaveta_id INTEGER,
   titular_anterior_id INTEGER,
   titular_anterior_nombre TEXT NOT NULL DEFAULT '',
+  titular_anterior_domicilio TEXT NOT NULL DEFAULT '',
+  titular_anterior_telefono TEXT NOT NULL DEFAULT '',
+  titular_anterior_numero_titulo TEXT NOT NULL DEFAULT '',
+  titular_anterior_fecha_titulo TEXT,
+  titular_anterior_beneficiario TEXT NOT NULL DEFAULT '',
   titular_nuevo_id INTEGER,
   titular_nuevo_nombre TEXT NOT NULL DEFAULT '',
   fecha_cambio TEXT NOT NULL DEFAULT (date('now')),
