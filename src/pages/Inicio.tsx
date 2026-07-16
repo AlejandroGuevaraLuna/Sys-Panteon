@@ -26,6 +26,9 @@ import {
   Skull,
   RotateCcw,
   FileText,
+  Hash,
+  ArrowRight,
+  Minus,
 } from 'lucide-react';
 import { fosasService } from '@/features/fosas/service';
 import { panteonesService } from '@/features/panteones/service';
@@ -207,7 +210,9 @@ export default function Inicio() {
   const grouped = useMemo(() => {
     const out: Record<ResultadoBusqueda['tipo'], ResultadoBusqueda[]> = {
       'fosa-titular': [],
+      'fosa-titulo': [],
       'gaveta-titular': [],
+      'gaveta-titulo': [],
       sepultado: [],
       exhumado: [],
     };
@@ -217,7 +222,9 @@ export default function Inicio() {
 
   const totalResultados =
     grouped['fosa-titular'].length +
+    grouped['fosa-titulo'].length +
     grouped['gaveta-titular'].length +
+    grouped['gaveta-titulo'].length +
     grouped['sepultado'].length +
     grouped['exhumado'].length;
 
@@ -238,8 +245,8 @@ export default function Inicio() {
             Búsqueda global
           </CardTitle>
           <CardDescription>
-            Busca por nombre del titular de una fosa/gaveta, o por nombre de
-            personas sepultadas o exhumadas.
+            Busca por nombre del titular de una fosa/gaveta, por número de
+            título, o por nombre de personas sepultadas o exhumadas.
           </CardDescription>
         </CardHeader>
         <CardContent className='space-y-4'>
@@ -271,13 +278,25 @@ export default function Inicio() {
                 {grouped['fosa-titular'].length > 0 && (
                   <Badge variant='info'>
                     <Cross className='mr-1 h-3 w-3' />{' '}
-                    {grouped['fosa-titular'].length} fosa(s)
+                    {grouped['fosa-titular'].length} fosa(s) por titular
+                  </Badge>
+                )}
+                {grouped['fosa-titulo'].length > 0 && (
+                  <Badge variant='info'>
+                    <Hash className='mr-1 h-3 w-3' />{' '}
+                    {grouped['fosa-titulo'].length} fosa(s) por título
                   </Badge>
                 )}
                 {grouped['gaveta-titular'].length > 0 && (
                   <Badge variant='info'>
                     <Box className='mr-1 h-3 w-3' />{' '}
-                    {grouped['gaveta-titular'].length} gaveta(s)
+                    {grouped['gaveta-titular'].length} gaveta(s) por titular
+                  </Badge>
+                )}
+                {grouped['gaveta-titulo'].length > 0 && (
+                  <Badge variant='info'>
+                    <Hash className='mr-1 h-3 w-3' />{' '}
+                    {grouped['gaveta-titulo'].length} gaveta(s) por título
                   </Badge>
                 )}
                 {grouped['sepultado'].length > 0 && (
@@ -298,7 +317,9 @@ export default function Inicio() {
               {(
                 [
                   'fosa-titular',
+                  'fosa-titulo',
                   'gaveta-titular',
+                  'gaveta-titulo',
                   'sepultado',
                   'exhumado',
                 ] as const
@@ -306,7 +327,9 @@ export default function Inicio() {
                 if (grouped[cat].length === 0) return null;
                 const titulos = {
                   'fosa-titular': 'Fosas (titular coincide)',
+                  'fosa-titulo': 'Fosas (número de título coincide)',
                   'gaveta-titular': 'Gavetas (titular coincide)',
+                  'gaveta-titulo': 'Gavetas (número de título coincide)',
                   sepultado: 'Personas sepultadas',
                   exhumado: 'Personas exhumadas',
                 };
@@ -564,7 +587,10 @@ export default function Inicio() {
 function ResultadoCard({ r }: { r: ResultadoBusqueda }) {
   const isFosa =
     r.tipo === 'fosa-titular' ||
-    (r.tipo !== 'gaveta-titular' && r.fosa_id != null);
+    r.tipo === 'fosa-titulo' ||
+    (r.tipo !== 'gaveta-titular' &&
+      r.tipo !== 'gaveta-titulo' &&
+      r.fosa_id != null);
   const href = r.fosa_id
     ? `/fosas/${r.fosa_id}`
     : r.gaveta_id
@@ -572,12 +598,27 @@ function ResultadoCard({ r }: { r: ResultadoBusqueda }) {
       : '/';
   const iconByCat = {
     'fosa-titular': Cross,
+    'fosa-titulo': Hash,
     'gaveta-titular': Box,
+    'gaveta-titulo': Hash,
     sepultado: Skull,
     exhumado: RotateCcw,
   } as const;
   const Icon = iconByCat[r.tipo];
   const entidadLabel = isFosa ? 'Fosa' : 'Gaveta';
+  // Para matches por titular, mostramos también el N° de título si existe.
+  // Para matches por título, mostramos el titular si existe.
+  const esMatchPorTitular =
+    r.tipo === 'fosa-titular' || r.tipo === 'gaveta-titular';
+  const esMatchPorTitulo =
+    r.tipo === 'fosa-titulo' || r.tipo === 'gaveta-titulo';
+  const esSepultado = r.tipo === 'sepultado';
+  const esExhumado = r.tipo === 'exhumado';
+  const mostrarTitular =
+    !!r.extra?.titular_nombre &&
+    (esMatchPorTitulo || esSepultado || esExhumado);
+  const mostrarTitulo =
+    !!r.extra?.numero_titulo && esMatchPorTitular;
 
   return (
     <Card className='hover:shadow-md transition-shadow'>
@@ -596,34 +637,131 @@ function ResultadoCard({ r }: { r: ResultadoBusqueda }) {
             {entidadLabel} #{r.extra?.numero ?? '?'}
           </Badge>
         </div>
-        {r.extra?.titular_nombre &&
-          r.tipo !== 'fosa-titular' &&
-          r.tipo !== 'gaveta-titular' && (
-            <div className='text-xs text-muted-foreground flex items-center gap-1'>
-              <User className='h-3 w-3' />
-              <span className='truncate'>
-                Titular: {r.extra.titular_nombre}
-              </span>
-            </div>
-          )}
-        {r.extra?.panteon && (
-          <div className='text-sm'>
-            <div className='font-medium'>{r.extra.panteon}</div>
-            <div className='text-xs text-muted-foreground'>
-              {r.extra.seccion} · {r.extra.linea}
-            </div>
+        {mostrarTitular && (
+          <div className='text-xs text-muted-foreground flex items-center gap-1'>
+            <User className='h-3 w-3' />
+            <span className='truncate'>
+              Titular: {r.extra!.titular_nombre}
+            </span>
           </div>
         )}
-        {r.extra?.fecha && (
-          <div className='text-xs text-muted-foreground'>
-            {r.tipo === 'sepultado'
-              ? 'Sepultación'
-              : r.tipo === 'exhumado'
-                ? 'Exhumación'
-                : 'Fecha'}
-            : {r.extra.fecha}
+        {mostrarTitulo && (
+          <div className='text-xs text-muted-foreground flex items-center gap-1'>
+            <Hash className='h-3 w-3' />
+            <span className='truncate'>
+              N° de título: {r.extra!.numero_titulo}
+            </span>
           </div>
         )}
+
+        {/* Ubicación: SIEMPRE visible en TODAS las cards (cuando hay datos) */}
+        {(r.extra?.panteon ||
+          r.extra?.seccion ||
+          r.extra?.linea ||
+          r.extra?.numero != null) && (
+          <div className='text-xs border-t pt-2 space-y-0.5'>
+            {r.extra?.panteon && (
+              <div className='flex items-baseline gap-1.5'>
+                <MapPin className='h-3 w-3 mt-0.5 flex-shrink-0 text-muted-foreground' />
+                <span className='truncate'>
+                  <strong className='text-foreground/80'>Panteón:</strong>{" "}
+                  {r.extra.panteon}
+                </span>
+              </div>
+            )}
+            {r.extra?.seccion && (
+              <div className='flex items-baseline gap-1.5'>
+                <LayoutGrid className='h-3 w-3 mt-0.5 flex-shrink-0 text-muted-foreground' />
+                <span className='truncate'>
+                  <strong className='text-foreground/80'>Sección:</strong>{" "}
+                  {r.extra.seccion}
+                </span>
+              </div>
+            )}
+            {r.extra?.linea && (
+              <div className='flex items-baseline gap-1.5'>
+                <Minus className='h-3 w-3 mt-0.5 flex-shrink-0 text-muted-foreground' />
+                <span className='truncate'>
+                  <strong className='text-foreground/80'>Línea:</strong>{" "}
+                  {r.extra.linea}
+                </span>
+              </div>
+            )}
+            {r.extra?.numero != null && (
+              <div className='flex items-baseline gap-1.5'>
+                <Hash className='h-3 w-3 mt-0.5 flex-shrink-0 text-muted-foreground' />
+                <span>
+                  <strong className='text-foreground/80'>
+                    N° de {entidadLabel}:
+                  </strong>{" "}
+                  #{r.extra.numero}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Detalles específicos para SEPULTADO */}
+        {esSepultado && (r.extra?.fecha || r.extra?.fecha_fallecimiento || r.extra?.edad || r.extra?.notas) && (
+          <div className='text-xs text-muted-foreground border-t pt-2 space-y-1'>
+            {r.extra?.fecha && (
+              <div className='flex items-center gap-1'>
+                <Calendar className='h-3 w-3' />
+                <span>
+                  <strong>Sepultación:</strong> {r.extra.fecha}
+                </span>
+              </div>
+            )}
+            {r.extra?.fecha_fallecimiento && (
+              <div className='flex items-center gap-1'>
+                <Skull className='h-3 w-3' />
+                <span>
+                  <strong>Fallecimiento:</strong> {r.extra.fecha_fallecimiento}
+                  {r.extra?.edad != null && ` (${r.extra.edad} años)`}
+                </span>
+              </div>
+            )}
+            {!r.extra?.fecha_fallecimiento && r.extra?.edad != null && (
+              <div className='flex items-center gap-1'>
+                <Skull className='h-3 w-3' />
+                <span><strong>Edad:</strong> {r.extra.edad} años</span>
+              </div>
+            )}
+            {r.extra?.notas && (
+              <div className='italic text-muted-foreground/90 line-clamp-2'>
+                &ldquo;{r.extra.notas}&rdquo;
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Detalles específicos para EXHUMADO */}
+        {esExhumado && (r.extra?.fecha || r.extra?.destino || r.extra?.notas) && (
+          <div className='text-xs text-muted-foreground border-t pt-2 space-y-1'>
+            {r.extra?.fecha && (
+              <div className='flex items-center gap-1'>
+                <Calendar className='h-3 w-3' />
+                <span>
+                  <strong>Exhumación:</strong> {r.extra.fecha}
+                </span>
+              </div>
+            )}
+            {r.extra?.destino && (
+              <div className='flex items-center gap-1'>
+                <ArrowRight className='h-3 w-3' />
+                <span>
+                  <strong>Destino:</strong> {r.extra.destino}
+                </span>
+              </div>
+            )}
+            {r.extra?.notas && (
+              <div className='italic text-muted-foreground/90 line-clamp-2'>
+                &ldquo;{r.extra.notas}&rdquo;
+              </div>
+            )}
+          </div>
+        )}
+
         <Button
           asChild
           size='sm'

@@ -4,13 +4,26 @@ function escLike(v: string): string {
   return v.replace(/'/g, "''").replace(/[%_]/g, "\\$&");
 }
 
+export type ResultadoTipo =
+  | "fosa-titular"
+  | "fosa-titulo"
+  | "gaveta-titular"
+  | "gaveta-titulo"
+  | "sepultado"
+  | "exhumado";
+
 export interface ResultadoBusqueda {
   /** Categoría del resultado. */
-  tipo: "fosa-titular" | "gaveta-titular" | "sepultado" | "exhumado";
+  tipo: ResultadoTipo;
   /** ID de la entidad que contiene el match (fosa, gaveta, o la entidad dueña del sepultado/exhumado). */
   fosa_id?: number;
   gaveta_id?: number;
-  /** Nombre que matcheó (titular, sepultado o exhumado). */
+  /**
+   * El valor que matcheó con la búsqueda.
+   *  - Para `*-titular`: es el nombre del titular.
+   *  - Para `*-titulo`:  es el número de título.
+   *  - Para `sepultado`/`exhumado`: es el nombre de la persona.
+   */
   nombre: string;
   /** Contexto extra para mostrar. */
   extra?: {
@@ -20,15 +33,24 @@ export interface ResultadoBusqueda {
     numero?: string | number;
     fecha?: string;
     notas?: string | null;
-    /** Para titular: coincide con el de la ficha. Para sepultado: nombre en la ficha. */
+    /** Para el match principal: titular. Para match por título: el titular de la ficha. */
     titular_nombre?: string;
+    /** Para el match principal: número de título. Para match por titular: el título de la ficha. */
+    numero_titulo?: string;
+    /** Solo para sepultado: fecha de fallecimiento (si se conoce). */
+    fecha_fallecimiento?: string | null;
+    /** Solo para sepultado: edad al fallecer (si se conoce). */
+    edad?: number | null;
+    /** Solo para exhumado: destino de los restos. */
+    destino?: string | null;
   };
 }
 
 export const busquedaService = {
   /**
-   * Búsqueda global: titular de fosa/gaveta, nombre de sepultado y
-   * nombre de exhumado. Devuelve hasta `limite` resultados en cada categoría.
+   * Búsqueda global: titular de fosa/gaveta, número de título de fosa/gaveta,
+   * nombre de sepultado y nombre de exhumado. Devuelve hasta `limite`
+   * resultados en cada categoría.
    */
   async buscar(q: string, limite = 25): Promise<ResultadoBusqueda[]> {
     const term = q.trim();
@@ -36,12 +58,13 @@ export const busquedaService = {
     const like = `%${escLike(term.toLowerCase())}%`;
     const db = await getDb();
 
-    const [fosas, gavetas, sepsF, sepsG, exhF, exhG] = await Promise.all([
+    const [fosasTitular, fosasTitulo, gavetasTitular, gavetasTitulo,
+      sepsF, sepsG, exhF, exhG] = await Promise.all([
       db.select<Array<{
-        id: number; numero: string; titular_nombre: string;
+        id: number; numero: string; titular_nombre: string; numero_titulo: string;
         panteon: string; seccion: string; linea: string;
       }>>(`
-        SELECT f.id, f.numero, f.titular_nombre,
+        SELECT f.id, f.numero, f.titular_nombre, f.numero_titulo,
                p.nombre AS panteon,
                s.codigo || ' — ' || s.nombre AS seccion,
                l.codigo || ' — ' || l.nombre AS linea
@@ -53,10 +76,26 @@ export const busquedaService = {
         LIMIT ${Number(limite)}
       `).catch(() => []),
       db.select<Array<{
-        id: number; numero: number; titular_nombre: string;
+        id: number; numero: string; titular_nombre: string; numero_titulo: string;
         panteon: string; seccion: string; linea: string;
       }>>(`
-        SELECT g.id, g.numero, g.titular_nombre,
+        SELECT f.id, f.numero, f.titular_nombre, f.numero_titulo,
+               p.nombre AS panteon,
+               s.codigo || ' — ' || s.nombre AS seccion,
+               l.codigo || ' — ' || l.nombre AS linea
+        FROM fosas f
+        JOIN lineas l ON l.id = f.linea_id
+        JOIN secciones s ON s.id = l.seccion_id
+        JOIN panteones p ON p.id = s.panteon_id
+        WHERE f.numero_titulo <> ''
+          AND LOWER(f.numero_titulo) LIKE '${like}'
+        LIMIT ${Number(limite)}
+      `).catch(() => []),
+      db.select<Array<{
+        id: number; numero: number; titular_nombre: string; numero_titulo: string;
+        panteon: string; seccion: string; linea: string;
+      }>>(`
+        SELECT g.id, g.numero, g.titular_nombre, g.numero_titulo,
                p.nombre AS panteon,
                s.codigo || ' — ' || s.nombre AS seccion,
                l.codigo || ' — ' || l.nombre AS linea
@@ -68,12 +107,29 @@ export const busquedaService = {
         LIMIT ${Number(limite)}
       `).catch(() => []),
       db.select<Array<{
+        id: number; numero: number; titular_nombre: string; numero_titulo: string;
+        panteon: string; seccion: string; linea: string;
+      }>>(`
+        SELECT g.id, g.numero, g.titular_nombre, g.numero_titulo,
+               p.nombre AS panteon,
+               s.codigo || ' — ' || s.nombre AS seccion,
+               l.codigo || ' — ' || l.nombre AS linea
+        FROM gavetas g
+        JOIN lineas l ON l.id = g.linea_id
+        JOIN secciones s ON s.id = l.seccion_id
+        JOIN panteones p ON p.id = s.panteon_id
+        WHERE g.numero_titulo <> ''
+          AND LOWER(g.numero_titulo) LIKE '${like}'
+        LIMIT ${Number(limite)}
+      `).catch(() => []),
+      db.select<Array<{
         id: number; nombre: string; fecha_sepultacion: string;
-        fecha_fallecimiento: string | null; notas: string | null;
+        fecha_fallecimiento: string | null; edad: number | null;
+        notas: string | null;
         fosa_id: number; fosa_numero: string;
         panteon: string; seccion: string; linea: string;
       }>>(`
-        SELECT s.id, s.nombre, s.fecha_sepultacion, s.fecha_fallecimiento, s.notas,
+        SELECT s.id, s.nombre, s.fecha_sepultacion, s.fecha_fallecimiento, s.edad, s.notas,
                f.id AS fosa_id, f.numero AS fosa_numero,
                p.nombre AS panteon,
                s2.codigo || ' — ' || s2.nombre AS seccion,
@@ -89,11 +145,12 @@ export const busquedaService = {
       `).catch(() => []),
       db.select<Array<{
         id: number; nombre: string; fecha_sepultacion: string;
-        fecha_fallecimiento: string | null; notas: string | null;
+        fecha_fallecimiento: string | null; edad: number | null;
+        notas: string | null;
         gaveta_id: number; gaveta_numero: number;
         panteon: string; seccion: string; linea: string;
       }>>(`
-        SELECT s.id, s.nombre, s.fecha_sepultacion, s.fecha_fallecimiento, s.notas,
+        SELECT s.id, s.nombre, s.fecha_sepultacion, s.fecha_fallecimiento, s.edad, s.notas,
                g.id AS gaveta_id, g.numero AS gaveta_numero,
                p.nombre AS panteon,
                s2.codigo || ' — ' || s2.nombre AS seccion,
@@ -151,7 +208,7 @@ export const busquedaService = {
 
     const res: ResultadoBusqueda[] = [];
 
-    for (const f of fosas) {
+    for (const f of fosasTitular) {
       res.push({
         tipo: "fosa-titular",
         fosa_id: f.id,
@@ -162,10 +219,32 @@ export const busquedaService = {
           linea: f.linea,
           numero: f.numero,
           titular_nombre: f.titular_nombre,
+          numero_titulo: f.numero_titulo || undefined,
         },
       });
     }
-    for (const g of gavetas) {
+    for (const f of fosasTitulo) {
+      // No duplicar si ya lo encontramos por nombre del titular
+      if (res.some((r) => r.tipo === "fosa-titular" && r.fosa_id === f.id)) {
+        // Opcional: podríamos enriquecer el resultado existente con numero_titulo.
+        // Como ya agregamos numero_titulo arriba, lo saltamos.
+        continue;
+      }
+      res.push({
+        tipo: "fosa-titulo",
+        fosa_id: f.id,
+        nombre: f.numero_titulo,
+        extra: {
+          panteon: f.panteon,
+          seccion: f.seccion,
+          linea: f.linea,
+          numero: f.numero,
+          titular_nombre: f.titular_nombre,
+          numero_titulo: f.numero_titulo,
+        },
+      });
+    }
+    for (const g of gavetasTitular) {
       res.push({
         tipo: "gaveta-titular",
         gaveta_id: g.id,
@@ -176,6 +255,25 @@ export const busquedaService = {
           linea: g.linea,
           numero: g.numero,
           titular_nombre: g.titular_nombre,
+          numero_titulo: g.numero_titulo || undefined,
+        },
+      });
+    }
+    for (const g of gavetasTitulo) {
+      if (res.some((r) => r.tipo === "gaveta-titular" && r.gaveta_id === g.id)) {
+        continue;
+      }
+      res.push({
+        tipo: "gaveta-titulo",
+        gaveta_id: g.id,
+        nombre: g.numero_titulo,
+        extra: {
+          panteon: g.panteon,
+          seccion: g.seccion,
+          linea: g.linea,
+          numero: g.numero,
+          titular_nombre: g.titular_nombre,
+          numero_titulo: g.numero_titulo,
         },
       });
     }
@@ -193,6 +291,8 @@ export const busquedaService = {
           numero: (s as { fosa_numero?: string; gaveta_numero?: number })
             .fosa_numero ?? (s as { gaveta_numero: number }).gaveta_numero,
           fecha: s.fecha_sepultacion,
+          fecha_fallecimiento: s.fecha_fallecimiento,
+          edad: s.edad,
           notas: s.notas,
         },
       });
@@ -211,7 +311,8 @@ export const busquedaService = {
           numero: (e as { fosa_numero?: string; gaveta_numero?: number })
             .fosa_numero ?? (e as { gaveta_numero: number }).gaveta_numero,
           fecha: e.fecha_exhumacion,
-          notas: e.destino || e.notas,
+          destino: e.destino,
+          notas: e.notas,
         },
       });
     }

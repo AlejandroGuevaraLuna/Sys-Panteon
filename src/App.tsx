@@ -25,6 +25,7 @@ import Diagnostico from "./pages/Diagnostico";
 import { crearBackup, backupFormat, type BackupResult } from "./lib/backup";
 import { Button } from "./components/ui/button";
 import { Loader2, CheckCircle2, AlertTriangle, X } from "lucide-react";
+import { BusquedaGlobalDialog } from "./features/busqueda/BusquedaGlobalDialog";
 
 type ClosePhase = "idle" | "creating" | "closing" | "error";
 
@@ -340,6 +341,7 @@ export default function App() {
     <AuthProvider>
       <AppCloseHandler />
       <BrowserRouter>
+        <BusquedaGlobalDialog />
         <Routes>
           {/* Login (público) */}
           <Route path="/login" element={<Login />} />
